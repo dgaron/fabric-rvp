@@ -11,7 +11,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	protoutil "github.com/hyperledger/fabric/protoutil"
@@ -61,16 +60,17 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	}
 
 	historyKey := scanner.dbItr.Key()
-	blockNum, _, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	// blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
+	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
 	if err != nil {
 		return nil, err
 	}
 
-	tranNumBytes := scanner.dbItr.Value()
-	tranNum, _, err := util.DecodeOrderPreservingVarUint64(tranNumBytes)
-	if err != nil {
-		return nil, err
-	}
+	// tranNumBytes := scanner.dbItr.Value()
+	// tranNum, _, err := util.DecodeOrderPreservingVarUint64(tranNumBytes)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 

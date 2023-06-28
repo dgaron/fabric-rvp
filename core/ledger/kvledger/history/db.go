@@ -9,6 +9,7 @@ package history
 import (
 	// DEBUG
 
+	"encoding/json"
 	"os"
 	"strconv"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -54,8 +54,9 @@ func NewDBProvider(path string) (*DBProvider, error) {
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) (*DB, error) {
 	return &DB{
-			levelDB: p.leveldbProvider.GetDBHandle(name),
-			name:    name,
+			levelDB:     p.leveldbProvider.GetDBHandle(name),
+			name:        name,
+			globalIndex: make(map[string][]byte),
 		},
 		nil
 }
@@ -67,8 +68,9 @@ func (p *DBProvider) Close() {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB *leveldbhelper.DBHandle
-	name    string
+	levelDB     *leveldbhelper.DBHandle
+	name        string
+	globalIndex map[string][]byte
 }
 
 // Commit implements method in HistoryDB interface
@@ -130,20 +132,53 @@ func (d *DB) Commit(block *common.Block) error {
 			// add a history record for each write
 			for _, nsRWSet := range txRWSet.NsRwSets {
 				ns := nsRWSet.NameSpace
-
+				dataKeys := make(map[string]newIndex)
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
-					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
-					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
-					dbBatch.Put(dataKey, util.EncodeOrderPreservingVarUint64(tranNo))
+					var (
+						prev         uint64
+						numVersions  uint64
+						transactions []uint64
+					)
+					globalIndexBytes, present := d.globalIndex[kvWrite.Key]
+					if present {
+						// We don't store any transactions in the global index
+						prev, numVersions, _, err = decodeNewIndex(globalIndexBytes)
+						if err != nil {
+							return err
+						}
+					} else {
+						prev = blockNo
+						// numVersions is initialized to 0
+					}
+					indexVal, present := dataKeys[kvWrite.Key]
+					if present {
+						// We store the newIndex in this map
+						// We will have already updated prev & numVersions if present:
+						// presence in dataKeys implies presence in globalIndex
+						_, _, transactions, err = decodeNewIndex(indexVal)
+						if err != nil {
+							return err
+						}
+					}
+					transactions = append(transactions, tranNo)
+					numVersions++
+					d.globalIndex[kvWrite.Key] = constructNewIndex(prev, numVersions, nil)
+					dataKeys[kvWrite.Key] = constructNewIndex(prev, numVersions, transactions)
+				}
+				for key, indexVal := range dataKeys {
+					//dataKey := constructDataKeyNew(ns, key, blockNo)
+					dataKey := constructDataKey(ns, key, blockNo, tranNo)
+					dbBatch.Put(dataKey, indexVal)
 
 					// DEBUG
-					// OUTPUTBYTES := [](dataKey, []byte(indexVal)...)
-					outputString := kvWrite.Key + strconv.FormatUint(blockNo, 10) + strconv.FormatUint(tranNo, 10) + "\n"
+					prev, numVersions, transactions, _ := decodeNewIndex(indexVal)
+					tranBytes, _ := json.Marshal(transactions)
+					outputString := key + " Block: " + strconv.FormatUint(blockNo, 10) + " Prev: " + strconv.FormatUint(prev, 10) + " " + strconv.FormatUint(numVersions, 10) + " "
+					outputString += string(tranBytes) + "\n"
 					TEMPFILE.WriteString(outputString)
 					// END DEBUG
 				}
 			}
-
 		} else {
 			logger.Debugf("Skipping transaction [%d] since it is not an endorsement transaction\n", tranNo)
 		}
