@@ -7,6 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	// DEBUG
+	"encoding/json"
+	"os"
+
+	// ENDDEBUG
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -78,6 +84,11 @@ func (d *DB) Commit(block *common.Block) error {
 	// Get the invalidation byte array for the block
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
+	// DEBUG
+	TEMPFILE, _ := os.OpenFile("/var/GI-Storage/globalIndex.json", os.O_CREATE|os.O_RDWR, 0644)
+	defer TEMPFILE.Close()
+	// ENDDEBUG
+
 	// write each tran's write set to history db
 	for _, envBytes := range block.Data.Data {
 
@@ -122,6 +133,13 @@ func (d *DB) Commit(block *common.Block) error {
 					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
 					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
 					dbBatch.Put(dataKey, dataKey)
+
+					// DEBUG
+					// OUTPUTBYTES := [](dataKey, []byte(indexVal)...)
+					jsonBytes, _ := json.Marshal(dataKey)
+					jsonString := string(jsonBytes) + "\n"
+					TEMPFILE.WriteString(jsonString)
+					// END DEBUG
 				}
 			}
 
