@@ -8,8 +8,9 @@ package history
 
 import (
 	// DEBUG
-	"encoding/json"
+
 	"os"
+	"strconv"
 
 	// ENDDEBUG
 
@@ -17,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -85,7 +87,7 @@ func (d *DB) Commit(block *common.Block) error {
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
 	// DEBUG
-	TEMPFILE, _ := os.OpenFile("/var/GI-Storage/globalIndex.json", os.O_CREATE|os.O_RDWR, 0644)
+	TEMPFILE, _ := os.OpenFile("/var/GI-Storage/globalIndex.json", os.O_CREATE|os.O_RDWR, 0666)
 	defer TEMPFILE.Close()
 	// ENDDEBUG
 
@@ -132,13 +134,12 @@ func (d *DB) Commit(block *common.Block) error {
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
 					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
-					dbBatch.Put(dataKey, dataKey)
+					dbBatch.Put(dataKey, util.EncodeOrderPreservingVarUint64(tranNo))
 
 					// DEBUG
 					// OUTPUTBYTES := [](dataKey, []byte(indexVal)...)
-					jsonBytes, _ := json.Marshal(dataKey)
-					jsonString := string(jsonBytes) + "\n"
-					TEMPFILE.WriteString(jsonString)
+					outputString := kvWrite.Key + strconv.FormatUint(blockNo, 10) + strconv.FormatUint(tranNo, 10) + "\n"
+					TEMPFILE.WriteString(outputString)
 					// END DEBUG
 				}
 			}
