@@ -60,6 +60,15 @@ func decodeNewIndex(newIndex newIndex) (uint64, uint64, []uint64, error) {
 	return prev, numVersions, transactions, nil
 }
 
+func constructDataKeyNew(ns string, key string, blocknum uint64) dataKey {
+	k := append([]byte(ns), compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	k = append(k, []byte(key)...)
+	k = append(k, compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
+	return dataKey(k)
+}
+
 // constructDataKey builds the key of the format namespace~len(key)~key~blocknum~trannum
 // using an order preserving encoding so that history query results are ordered by height
 // Note: this key format is different than the format in pre-v2.0 releases and requires

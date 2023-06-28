@@ -7,14 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	// DEBUG
-
-	"encoding/json"
-	"os"
-	"strconv"
-
-	// ENDDEBUG
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -88,11 +80,6 @@ func (d *DB) Commit(block *common.Block) error {
 	// Get the invalidation byte array for the block
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
-	// DEBUG
-	TEMPFILE, _ := os.OpenFile("/var/GI-Storage/globalIndex.json", os.O_CREATE|os.O_RDWR, 0666)
-	defer TEMPFILE.Close()
-	// ENDDEBUG
-
 	// write each tran's write set to history db
 	for _, envBytes := range block.Data.Data {
 
@@ -141,24 +128,22 @@ func (d *DB) Commit(block *common.Block) error {
 					)
 					globalIndexBytes, present := d.globalIndex[kvWrite.Key]
 					if present {
-						// We don't store any transactions in the global index
-						prev, numVersions, _, err = decodeNewIndex(globalIndexBytes)
-						if err != nil {
-							return err
+						indexVal, present := dataKeys[kvWrite.Key]
+						if present {
+							// presence in dataKeys implies presence in globalIndex
+							prev, numVersions, transactions, err = decodeNewIndex(indexVal)
+							if err != nil {
+								return err
+							}
+						} else {
+							prev, numVersions, _, err = decodeNewIndex(globalIndexBytes)
+							if err != nil {
+								return err
+							}
 						}
 					} else {
 						prev = blockNo
 						// numVersions is initialized to 0
-					}
-					indexVal, present := dataKeys[kvWrite.Key]
-					if present {
-						// We store the newIndex in this map
-						// We will have already updated prev & numVersions if present:
-						// presence in dataKeys implies presence in globalIndex
-						_, _, transactions, err = decodeNewIndex(indexVal)
-						if err != nil {
-							return err
-						}
 					}
 					transactions = append(transactions, tranNo)
 					numVersions++
@@ -166,17 +151,8 @@ func (d *DB) Commit(block *common.Block) error {
 					dataKeys[kvWrite.Key] = constructNewIndex(prev, numVersions, transactions)
 				}
 				for key, indexVal := range dataKeys {
-					//dataKey := constructDataKeyNew(ns, key, blockNo)
-					dataKey := constructDataKey(ns, key, blockNo, tranNo)
+					dataKey := constructDataKeyNew(ns, key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
-
-					// DEBUG
-					prev, numVersions, transactions, _ := decodeNewIndex(indexVal)
-					tranBytes, _ := json.Marshal(transactions)
-					outputString := key + " Block: " + strconv.FormatUint(blockNo, 10) + " Prev: " + strconv.FormatUint(prev, 10) + " " + strconv.FormatUint(numVersions, 10) + " "
-					outputString += string(tranBytes) + "\n"
-					TEMPFILE.WriteString(outputString)
-					// END DEBUG
 				}
 			}
 		} else {

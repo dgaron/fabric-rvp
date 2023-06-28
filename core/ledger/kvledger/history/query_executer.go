@@ -38,7 +38,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore}, nil
+	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, -1, nil}, nil
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
@@ -48,6 +48,8 @@ type historyScanner struct {
 	key        string
 	dbItr      iterator.Iterator
 	blockStore *blkstorage.BlockStore
+	txPosition int
+	indexVal   newIndex
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -60,17 +62,23 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	}
 
 	historyKey := scanner.dbItr.Key()
-	// blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
 	if err != nil {
 		return nil, err
 	}
-
-	// tranNumBytes := scanner.dbItr.Value()
-	// tranNum, _, err := util.DecodeOrderPreservingVarUint64(tranNumBytes)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	var transactions []uint64
+	if scanner.txPosition == -1 {
+		scanner.indexVal = scanner.dbItr.Value()
+		_, _, transactions, err = decodeNewIndex(scanner.indexVal)
+		scanner.txPosition = len(transactions) - 1
+	} else {
+		_, _, transactions, err = decodeNewIndex(scanner.indexVal)
+	}
+	if err != nil {
+		return nil, err
+	}
+	tranNum := transactions[scanner.txPosition]
+	scanner.txPosition--
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
