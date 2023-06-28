@@ -121,7 +121,7 @@ func (d *DB) Commit(block *common.Block) error {
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
 					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
-					dbBatch.Put(dataKey, emptyValue)
+					dbBatch.Put(dataKey, dataKey)
 				}
 			}
 
