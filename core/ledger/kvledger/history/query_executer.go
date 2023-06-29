@@ -57,7 +57,7 @@ type historyScanner struct {
 // loads the block:tran from block storage, finds the key and returns the result.
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	// call Prev because history query result is returned from newest to oldest
-	if !scanner.dbItr.Prev() {
+	if scanner.txPosition == -1 && !scanner.dbItr.Prev() {
 		return nil, nil
 	}
 
