@@ -89,7 +89,7 @@ func (d *DB) Commit(block *common.Block) error {
 			logger.Debugf("Channel [%s]: Skipping history write for invalid transaction number %d",
 				d.name, tranNo)
 			tranNo++
-			continue
+			continueonstructNewIndex(prev, numVersions, transactions)
 		}
 
 		env, err := protoutil.GetEnvelopeFromBlock(envBytes)
@@ -148,10 +148,9 @@ func (d *DB) Commit(block *common.Block) error {
 					transactions = append(transactions, tranNo)
 					numVersions++
 					d.globalIndex[kvWrite.Key] = constructNewIndex(prev, numVersions, nil)
-					dataKeys[kvWrite.Key] = constructNewIndex(prev, numVersions, transactions)
-				}
-				for key, indexVal := range dataKeys {
-					dataKey := constructDataKeyNew(ns, key, blockNo)
+					indexVal := constructNewIndex(prev, numVersions, transactions)
+					dataKeys[kvWrite.Key] = indexVal
+					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
 				}
 			}
