@@ -73,6 +73,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
+	dataKeys := make(map[string]newIndex)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -119,7 +120,6 @@ func (d *DB) Commit(block *common.Block) error {
 			// add a history record for each write
 			for _, nsRWSet := range txRWSet.NsRwSets {
 				ns := nsRWSet.NameSpace
-				dataKeys := make(map[string]newIndex)
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					var (
 						prev         uint64
