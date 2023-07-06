@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"github.com/gogo/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
@@ -43,14 +44,14 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 
 // historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
-	rangeScan  *rangeScan
-	namespace  string
-	key        string
-	dbItr      iterator.Iterator
-	blockStore *blkstorage.BlockStore
-	txPosition int
-	indexVal   newIndex
-	currentBlock	*common.Block
+	rangeScan    *rangeScan
+	namespace    string
+	key          string
+	dbItr        iterator.Iterator
+	blockStore   *blkstorage.BlockStore
+	txPosition   int
+	indexVal     newIndex
+	currentBlock *common.Block
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -71,7 +72,7 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	var transactions []uint64
 	if scanner.txPosition == -1 {
 		// Retrieve new block
-		currentBlock = blockStore.RetrieveBlockByNumber(blockNum)
+		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
 		scanner.indexVal = scanner.dbItr.Value()
 		_, _, transactions, err = decodeNewIndex(scanner.indexVal)
 		scanner.txPosition = len(transactions) - 1
@@ -86,16 +87,14 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
-	// Get the TX location
-	loc, err := blockStore.fileMgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
+	// Index into stored block & get the tranEnvelope
+	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
+
+	_, n := proto.DecodeVarint(txEnvelopeBytes)
+	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes[n:])
 	if err != nil {
 		return nil, err
 	}
-	// Index into stored block & get the tranEnvelope
-	txEnvelopeBytes := currentBlock[loc.offset; loc.offset + loc.bytesLength]
-	_, n := proto.DecodeVarint(txEnvelopeBytes)
-	tranEnvelope := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes[n:])
-
 	// The rest continues as before
 
 	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
