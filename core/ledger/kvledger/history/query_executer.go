@@ -38,7 +38,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, -1, nil}, nil
+	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, -1, nil, nil}, nil
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
@@ -50,6 +50,7 @@ type historyScanner struct {
 	blockStore *blkstorage.BlockStore
 	txPosition int
 	indexVal   newIndex
+	currentBlock	*common.Block
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -69,6 +70,8 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	}
 	var transactions []uint64
 	if scanner.txPosition == -1 {
+		// Retrieve new block
+		currentBlock = blockStore.RetrieveBlockByNumber(blockNum)
 		scanner.indexVal = scanner.dbItr.Value()
 		_, _, transactions, err = decodeNewIndex(scanner.indexVal)
 		scanner.txPosition = len(transactions) - 1
@@ -83,14 +86,21 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
-	// Get the transaction from block storage that is associated with this history record
-	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+	// Get the TX location
+	loc, err := blockStore.fileMgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
 		return nil, err
 	}
+	// Index into stored block & get the tranEnvelope
+	txEnvelopeBytes := currentBlock[loc.offset; loc.offset + loc.bytesLength]
+	_, n := proto.DecodeVarint(txEnvelopeBytes)
+	tranEnvelope := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes[n:])
+
+	// The rest continues as before
 
 	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
 	queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.key)
+
 	if err != nil {
 		return nil, err
 	}
