@@ -89,7 +89,7 @@ func (d *DB) Commit(block *common.Block) error {
 			logger.Debugf("Channel [%s]: Skipping history write for invalid transaction number %d",
 				d.name, tranNo)
 			tranNo++
-			continueonstructNewIndex(prev, numVersions, transactions)
+			continue
 		}
 
 		env, err := protoutil.GetEnvelopeFromBlock(envBytes)
