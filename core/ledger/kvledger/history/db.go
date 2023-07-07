@@ -7,6 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"encoding/json"
+	"os"
+	"strconv"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -81,6 +85,11 @@ func (d *DB) Commit(block *common.Block) error {
 	// Get the invalidation byte array for the block
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
+	// DEBUG
+	TEMPFILE, _ := os.OpenFile("/var/index.json", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	defer TEMPFILE.Close()
+	// ENDDEBUG
+
 	// write each tran's write set to history db
 	for _, envBytes := range block.Data.Data {
 
@@ -152,6 +161,13 @@ func (d *DB) Commit(block *common.Block) error {
 					dataKeys[kvWrite.Key] = indexVal
 					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
+
+					// DEBUG
+					tranBytes, _ := json.Marshal(transactions)
+					outputString := "Key: " + kvWrite.Key + " Block: " + strconv.FormatUint(blockNo, 10) + " Prev: " + strconv.FormatUint(prev, 10) + " Versions: " + strconv.FormatUint(numVersions, 10) + " "
+					outputString += "Transactions: " + string(tranBytes) + "\n"
+					TEMPFILE.WriteString(outputString)
+					// END DEBUG
 				}
 			}
 		} else {
