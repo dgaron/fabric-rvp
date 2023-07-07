@@ -90,8 +90,8 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	// Index into stored block & get the tranEnvelope
 	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
 
-	_, n := proto.DecodeVarint(txEnvelopeBytes)
-	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes[n:])
+	// _, n := proto.DecodeVarint(txEnvelopeBytes)
+	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
 	if err != nil {
 		return nil, err
 	}
