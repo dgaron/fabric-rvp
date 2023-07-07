@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	"github.com/gogo/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
@@ -90,7 +89,6 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	// Index into stored block & get the tranEnvelope
 	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
 
-	// _, n := proto.DecodeVarint(txEnvelopeBytes)
 	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
 	if err != nil {
 		return nil, err
