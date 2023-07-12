@@ -70,6 +70,9 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if scanner.txIndex == -1 {
 		// Retrieve new block
 		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
+		if err != nil {
+			return nil, err
+		}
 		indexVal := scanner.dbItr.Value()
 		_, _, scanner.transactions, err = decodeNewIndex(indexVal)
 		if err != nil {
