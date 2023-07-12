@@ -24,7 +24,6 @@ type rangeScan struct {
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
-	emptyValue      = []byte{}     // used to store as value for keys where only key needs to be stored (e.g., dataKeys)
 )
 
 func constructNewIndex(prev uint64, numVersions uint64, transactions []uint64) newIndex {
