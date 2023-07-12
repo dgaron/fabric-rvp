@@ -48,7 +48,7 @@ type historyScanner struct {
 	key        string
 	dbItr      iterator.Iterator
 	blockStore *blkstorage.BlockStore
-	txPosition   int
+	txIndex   int
 	transactions []uint64
 	currentBlock *common.Block
 }
@@ -58,7 +58,7 @@ type historyScanner struct {
 // loads the block:tran from block storage, finds the key and returns the result.
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	// call Prev because history query result is returned from newest to oldest
-	if scanner.txPosition == -1 && !scanner.dbItr.Prev() {
+	if scanner.txIndex == -1 && !scanner.dbItr.Prev() {
 		return nil, nil
 	}
 
@@ -67,25 +67,24 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if scanner.txPosition == -1 {
+	if scanner.txIndex == -1 {
 		// Retrieve new block
 		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
 		indexVal := scanner.dbItr.Value()
 		_, _, scanner.transactions, err = decodeNewIndex(indexVal)
-		scanner.txPosition = len(transactions) - 1
+		if err != nil {
+			return nil, err
+		}
+		scanner.txIndex = len(transactions) - 1
 	}
-	if err != nil {
-		return nil, err
-	}
-	tranNum := scanner.transactions[scanner.txPosition]
-	scanner.txPosition--
+	tranNum := scanner.transactions[scanner.txIndex]
+	scanner.txIndex--
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
 	// Index into stored block & get the tranEnvelope
 	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
-
 	// Get the transaction from block storage that is associated with this history record
 	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
 	if err != nil {
