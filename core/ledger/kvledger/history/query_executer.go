@@ -41,14 +41,14 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, -1, nil, nil}, nil
 }
 
-//historyScanner implements ResultsIterator for iterating through history results
+// historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
-	rangeScan  *rangeScan
-	namespace  string
-	key        string
-	dbItr      iterator.Iterator
-	blockStore *blkstorage.BlockStore
-	txIndex   int
+	rangeScan    *rangeScan
+	namespace    string
+	key          string
+	dbItr        iterator.Iterator
+	blockStore   *blkstorage.BlockStore
+	txIndex      int
 	transactions []uint64
 	currentBlock *common.Block
 }
@@ -75,7 +75,7 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		scanner.txIndex = len(transactions) - 1
+		scanner.txIndex = len(scanner.transactions) - 1
 	}
 	tranNum := scanner.transactions[scanner.txIndex]
 	scanner.txIndex--

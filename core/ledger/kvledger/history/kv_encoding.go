@@ -69,13 +69,18 @@ func constructGlobalIndex(prev uint64, numVersions uint64) globalIndex {
 }
 
 func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
-	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex)
+	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(globalIndex)
 	if err != nil {
 		return 0, 0, err
 	}
-	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex[prevBytesConsumed:])
+	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(globalIndex[prevBytesConsumed:])
 	if err != nil {
 		return 0, 0, err
+	}
+	// The following error should never happen. Keep the check just in case there is some unknown bug.
+	if prevBytesConsumed+versionBytesConsumed != len(globalIndex) {
+		return 0, 0, errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumTranNumBytes (%d)",
+			prevBytesConsumed+versionBytesConsumed, len(globalIndex))
 	}
 	return prev, numVersions, nil
 }
@@ -92,7 +97,8 @@ func constructDataKeyNew(ns string, key string, blocknum uint64) dataKey {
 // constructDataKey builds the key of the format namespace~len(key)~key~blocknum~trannum
 // using an order preserving encoding so that history query results are ordered by height
 // Note: this key format is different than the format in pre-v2.0 releases and requires
-//       a historydb rebuild when upgrading an older version to v2.0.
+//
+//	a historydb rebuild when upgrading an older version to v2.0.
 func constructDataKey(ns string, key string, blocknum uint64, trannum uint64) dataKey {
 	k := append([]byte(ns), compositeKeySep...)
 	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
