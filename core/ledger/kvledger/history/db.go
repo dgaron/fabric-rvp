@@ -56,6 +56,7 @@ func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
 		levelDB: p.leveldbProvider.GetDBHandle(name),
 		name:    name,
+		globalIndex: make(map[string][]byte),
 	}
 }
 
@@ -73,6 +74,7 @@ func (p *DBProvider) Drop(channelName string) error {
 type DB struct {
 	levelDB *leveldbhelper.DBHandle
 	name    string
+	globalIndex map[string][]byte
 }
 
 // Commit implements method in HistoryDB interface
@@ -83,6 +85,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
+	dataKeys := make(map[string]newIndex)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -131,9 +134,42 @@ func (d *DB) Commit(block *common.Block) error {
 				ns := nsRWSet.NameSpace
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
-					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
-					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
-					dbBatch.Put(dataKey, emptyValue)
+					var (
+						prev         uint64
+						numVersions  uint64
+						transactions []uint64
+					)
+					globalIndexBytes, present := d.globalIndex[kvWrite.Key]
+					if present {
+						indexVal, present := dataKeys[kvWrite.Key]
+						if present {
+							// presence in dataKeys implies presence in globalIndex
+							prev, numVersions, transactions, err = decodeNewIndex(indexVal)
+							if err != nil {
+								return err
+							}
+						} else {
+							prev, numVersions, err = decodeGlobalIndex(globalIndexBytes)
+							if err != nil {
+								return err
+							}
+						}
+					} else {
+						prev = blockNo
+						// numVersions is initialized to 0
+					}
+
+					transactions = append(transactions, tranNo)
+					numVersions++
+
+					d.globalIndex[kvWrite.Key] = constructGlobalIndex(prev, numVersions)
+
+					indexVal := constructNewIndex(prev, numVersions, transactions)
+					dataKeys[kvWrite.Key] = indexVal
+
+
+					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
+					dbBatch.Put(dataKey, indexVal)
 				}
 			}
 

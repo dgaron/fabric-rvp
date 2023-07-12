@@ -14,6 +14,9 @@ import (
 )
 
 type dataKey []byte
+type newIndex []byte
+type globalIndex []byte
+
 type rangeScan struct {
 	startKey, endKey []byte
 }
@@ -23,6 +26,68 @@ var (
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
 	emptyValue      = []byte{}     // used to store as value for keys where only key needs to be stored (e.g., dataKeys)
 )
+
+func constructNewIndex(prev uint64, numVersions uint64, transactions []uint64) newIndex {
+	var k []byte
+	k = append(k, util.EncodeOrderPreservingVarUint64(prev)...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(numVersions)...)
+	for _, tx := range transactions {
+		k = append(k, util.EncodeOrderPreservingVarUint64(tx)...)
+	}
+	return newIndex(k)
+}
+
+func decodeNewIndex(newIndex newIndex) (uint64, uint64, []uint64, error) {
+	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex[prevBytesConsumed:])
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	var transactions []uint64
+	currentTxStart := prevBytesConsumed + versionBytesConsumed
+	var lastTxBytesConsumed int
+	for i := currentTxStart; i < len(newIndex); i += lastTxBytesConsumed {
+		tx, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex[currentTxStart:])
+		lastTxBytesConsumed = bytesConsumed
+		currentTxStart += bytesConsumed
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		transactions = append(transactions, tx)
+	}
+	return prev, numVersions, transactions, nil
+}
+
+func constructGlobalIndex(prev uint64, numVersions uint64) globalIndex {
+	var k []byte
+	k = append(k, util.EncodeOrderPreservingVarUint64(prev)...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(numVersions)...)
+	return globalIndex(k)
+}
+
+func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
+	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex)
+	if err != nil {
+		return 0, 0, err
+	}
+	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex[prevBytesConsumed:])
+	if err != nil {
+		return 0, 0, err
+	}
+	return prev, numVersions, nil
+}
+
+func constructDataKeyNew(ns string, key string, blocknum uint64) dataKey {
+	k := append([]byte(ns), compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	k = append(k, []byte(key)...)
+	k = append(k, compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
+	return dataKey(k)
+}
 
 // constructDataKey builds the key of the format namespace~len(key)~key~blocknum~trannum
 // using an order preserving encoding so that history query results are ordered by height

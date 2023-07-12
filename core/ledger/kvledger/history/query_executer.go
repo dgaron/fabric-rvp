@@ -38,7 +38,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore}, nil
+	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, -1, nil, nil}, nil
 }
 
 //historyScanner implements ResultsIterator for iterating through history results
@@ -48,6 +48,9 @@ type historyScanner struct {
 	key        string
 	dbItr      iterator.Iterator
 	blockStore *blkstorage.BlockStore
+	txPosition   int
+	transactions []uint64
+	currentBlock *common.Block
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -55,20 +58,36 @@ type historyScanner struct {
 // loads the block:tran from block storage, finds the key and returns the result.
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	// call Prev because history query result is returned from newest to oldest
-	if !scanner.dbItr.Prev() {
+	if scanner.txPosition == -1 && !scanner.dbItr.Prev() {
 		return nil, nil
 	}
 
 	historyKey := scanner.dbItr.Key()
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
 	if err != nil {
 		return nil, err
 	}
+	if scanner.txPosition == -1 {
+		// Retrieve new block
+		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
+		indexVal := scanner.dbItr.Value()
+		_, _, scanner.transactions, err = decodeNewIndex(indexVal)
+		scanner.txPosition = len(transactions) - 1
+	}
+	if err != nil {
+		return nil, err
+	}
+	tranNum := scanner.transactions[scanner.txPosition]
+	scanner.txPosition--
+
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
+	// Index into stored block & get the tranEnvelope
+	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
+
 	// Get the transaction from block storage that is associated with this history record
-	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
 	if err != nil {
 		return nil, err
 	}
