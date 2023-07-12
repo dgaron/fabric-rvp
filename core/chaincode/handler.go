@@ -190,6 +190,8 @@ func (h *Handler) handleMessageReadyState(msg *pb.ChaincodeMessage) error {
 		go h.HandleTransaction(msg, h.HandleGetQueryResult)
 	case pb.ChaincodeMessage_GET_HISTORY_FOR_KEY:
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKey)
+	case pb.ChaincodeMessage_GET_HISTORY_FOR_KEYS:
+		go h.HandleTransaction(msg, h.HandleGetHistoryForKeys)
 	case pb.ChaincodeMessage_QUERY_STATE_NEXT:
 		go h.HandleTransaction(msg, h.HandleQueryStateNext)
 	case pb.ChaincodeMessage_QUERY_STATE_CLOSE:
@@ -883,6 +885,44 @@ func (h *Handler) HandleGetHistoryForKey(msg *pb.ChaincodeMessage, txContext *Tr
 	}
 
 	historyIter, err := txContext.HistoryQueryExecutor.GetHistoryForKey(namespaceID, getHistoryForKey.Key)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	totalReturnLimit := h.calculateTotalReturnLimit(nil)
+
+	txContext.InitializeQueryContext(iterID, historyIter)
+	payload, err := h.QueryResponseBuilder.BuildQueryResponse(txContext, historyIter, iterID, false, totalReturnLimit)
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.WithStack(err)
+	}
+
+	payloadBytes, err := proto.Marshal(payload)
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.Wrap(err, "marshal failed")
+	}
+
+	chaincodeLogger.Debugf("Got keys and values. Sending %s", pb.ChaincodeMessage_RESPONSE)
+	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
+}
+
+// Handles query to ledger history db
+func (h *Handler) HandleGetHistoryForKeys(msg *pb.ChaincodeMessage, txContext *TransactionContext) (*pb.ChaincodeMessage, error) {
+	if txContext.HistoryQueryExecutor == nil {
+		return nil, errors.New("history database is not enabled")
+	}
+	iterID := h.UUIDGenerator.New()
+	namespaceID := txContext.NamespaceID
+
+	getHistoryForKeys := &pb.GetHistoryForKeys{}
+	err := proto.Unmarshal(msg.Payload, getHistoryForKeys)
+	if err != nil {
+		return nil, errors.Wrap(err, "unmarshal failed")
+	}
+
+	historyIter, err := txContext.HistoryQueryExecutor.GetHistoryForKeys(namespaceID, getHistoryForKeys.Keys)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
