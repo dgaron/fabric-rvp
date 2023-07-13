@@ -54,8 +54,8 @@ func (p *DBProvider) MarkStartingSavepoint(name string, savepoint *version.Heigh
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
-		levelDB: p.leveldbProvider.GetDBHandle(name),
-		name:    name,
+		levelDB:     p.leveldbProvider.GetDBHandle(name),
+		name:        name,
 		globalIndex: make(map[string][]byte),
 	}
 }
@@ -72,8 +72,8 @@ func (p *DBProvider) Drop(channelName string) error {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB *leveldbhelper.DBHandle
-	name    string
+	levelDB     *leveldbhelper.DBHandle
+	name        string
 	globalIndex map[string][]byte
 }
 
@@ -166,7 +166,6 @@ func (d *DB) Commit(block *common.Block) error {
 
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
-
 
 					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
