@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -18,6 +20,8 @@ import (
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	protoutil "github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"io/ioutil"
+	"os"
 )
 
 var logger = flogging.MustGetLogger("history")
@@ -54,8 +58,8 @@ func (p *DBProvider) MarkStartingSavepoint(name string, savepoint *version.Heigh
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
-		levelDB: p.leveldbProvider.GetDBHandle(name),
-		name:    name,
+		levelDB:     p.leveldbProvider.GetDBHandle(name),
+		name:        name,
 		globalIndex: make(map[string][]byte),
 	}
 }
@@ -72,9 +76,15 @@ func (p *DBProvider) Drop(channelName string) error {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB *leveldbhelper.DBHandle
-	name    string
+	levelDB     *leveldbhelper.DBHandle
+	name        string
 	globalIndex map[string][]byte
+}
+
+type HistoryValue struct {
+	Prev         uint64   `json:"prev"`
+	NumVersions  uint64   `json:"num_versions"`
+	Transactions []uint64 `json:"transactions"`
 }
 
 // Commit implements method in HistoryDB interface
@@ -86,6 +96,22 @@ func (d *DB) Commit(block *common.Block) error {
 
 	dbBatch := d.levelDB.NewUpdateBatch()
 	dataKeys := make(map[string]newIndex)
+
+	historyMap := make(map[string]HistoryValue)
+
+	// Read existing data
+	filePath := "/var/PeerStorage/historyData.json"
+	if _, err := os.Stat(filePath); err == nil {
+		file, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			return err
+		}
+
+		err = json.Unmarshal(file, &historyMap)
+		if err != nil {
+			return err
+		}
+	}
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -162,11 +188,17 @@ func (d *DB) Commit(block *common.Block) error {
 					transactions = append(transactions, tranNo)
 					numVersions++
 
+					key := fmt.Sprintf("%s_%s_%d", ns, kvWrite.Key, blockNo)
+					historyMap[key] = HistoryValue{
+						Prev:         prev,
+						NumVersions:  numVersions,
+						Transactions: transactions,
+					}
+
 					d.globalIndex[kvWrite.Key] = constructGlobalIndex(prev, numVersions)
 
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
-
 
 					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
@@ -188,6 +220,9 @@ func (d *DB) Commit(block *common.Block) error {
 	if err := d.levelDB.WriteBatch(dbBatch, true); err != nil {
 		return err
 	}
+
+	file, _ := json.MarshalIndent(historyMap, "", " ")
+	_ = ioutil.WriteFile(filePath, file, 0644)
 
 	logger.Debugf("Channel [%s]: Updates committed to history database for blockNo [%v]", d.name, blockNo)
 	return nil
