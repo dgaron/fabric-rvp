@@ -7,10 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
-	pb "github.com/hyperledger/fabric-protos-go/peer"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
@@ -117,7 +115,7 @@ func (scanner *historyScanner) Close() {
 
 // GetHistoryForKeys implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
-	var keys		map[string]keyData
+	var keyMap map[string]keyData
 	for _, key := range keys {
 		rangeScan := constructRangeScan(namespace, key)
 		dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
@@ -127,10 +125,9 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		if dbItr.Last() {
 			dbItr.Next()
 		}
-		rangeScans = append(rangeScans, rangeScan)
-		keys[key] = &keyData{dbItr, nil, -1}
+		keyMap[key] = keyData{dbItr, nil, -1}
 	}
-	scanner := &parallelHistoryScanner{namespace, keys, q.blockStore, nil, 0, nil, -1}
+	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, -1}
 	err := scanner.nextBlock()
 	if err != nil {
 		return nil, err
@@ -139,9 +136,9 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 }
 
 type keyData struct {
-	dbItr			iterator.Iterator
-	transactions	[]uint64
-	txIndex			int
+	dbItr        iterator.Iterator
+	transactions []uint64
+	txIndex      int
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
@@ -149,10 +146,10 @@ type parallelHistoryScanner struct {
 	namespace       string
 	keys            map[string]keyData
 	blockStore      *blkstorage.BlockStore
-	currentBlock 	*common.Block
+	currentBlock    *common.Block
 	nextBlockToRead uint64
 	keysInBlock     []string
-	currentKeyIndex	int
+	currentKeyIndex int
 }
 
 func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) {
@@ -161,12 +158,12 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 		return nil, nil
 	}
 
-	key := &scanner.keysInBlock[scanner.currentKeyIndex]
+	key := scanner.keysInBlock[scanner.currentKeyIndex]
 	blockNum := scanner.nextBlockToRead
-	tranNum := key.transactions[key.txIndex]
+	tranNum := scanner.keys[key].txIndex
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
-		scanner.namespace, key blockNum, tranNum)
+		scanner.namespace, key, blockNum, tranNum)
 
 	// Index into stored block & get the tranEnvelope
 	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
@@ -190,8 +187,14 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
 
 	// Update position trackers
-	key.txIndex--
-	if key.txIndex == -1 {
+	if keyData, found := scanner.keys[key]; found {
+		keyData.txIndex = tranNum - 1
+		scanner.keys[key] = keyData
+	} else {
+		return nil, nil
+	}
+
+	if scanner.keys[key].txIndex == -1 {
 		scanner.currentKeyIndex--
 	}
 	if scanner.currentKeyIndex == -1 {
@@ -202,22 +205,25 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 }
 
 func (scanner *parallelHistoryScanner) Close() {
-	for _, dbItr := range scanner.dbItrs {
-		dbItr.Release()
+	for key, _ := range scanner.keys {
+		scanner.keys[key].dbItr.Release()
 	}
 }
 
 func (scanner *parallelHistoryScanner) nextBlock() error {
 	scanner.nextBlockToRead = 0
-	for _, key := range scanner.keys {
+	for key := range scanner.keys {
 		currentIndexVal := scanner.keys[key].dbItr.Value()
 		if currentIndexVal != nil {
 			prev, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			scanner.keys[key].transactions = transactions
-			scanner.keys[key].txIndex = len(transactions) - 1
+			if keyData, found := scanner.keys[key]; found {
+				keyData.transactions = transactions
+				keyData.txIndex = len(transactions) - 1
+				scanner.keys[key] = keyData
+			}
 			if prev > scanner.nextBlockToRead {
 				scanner.nextBlockToRead = prev
 				scanner.keysInBlock = append([]string{}, key)
@@ -227,10 +233,14 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 		}
 	}
 	if len(scanner.keysInBlock) > 0 {
-		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(scanner.nextBlockToRead)
+		block, err := scanner.blockStore.RetrieveBlockByNumber(scanner.nextBlockToRead)
+		scanner.currentBlock = block
+		if err != nil {
+			return err
+		}
 	}
 	scanner.currentKeyIndex = len(scanner.keysInBlock) - 1
-	return err
+	return nil
 }
 
 // getTxIDandKeyWriteValueFromTran inspects a transaction for writes to a given key
