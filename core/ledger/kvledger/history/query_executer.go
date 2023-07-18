@@ -122,9 +122,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		if err != nil {
 			return nil, err
 		}
-		if dbItr.Last() {
-			dbItr.Next()
-		}
+		dbItr.Last()
 		keyMap[key] = keyData{dbItr, nil, -1}
 	}
 	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, -1}
@@ -187,18 +185,12 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
 
 	// Update position trackers
-	if keyData, found := scanner.keys[key]; found {
-		keyData.txIndex = tranNum - 1
-		scanner.keys[key] = keyData
-	} else {
-		return nil, nil
-	}
-
-	if scanner.keys[key].txIndex == -1 {
+	if scanner.keys[key].txIndex == 0 {
+		scanner.keys[key].dbItr.Prev()
 		scanner.currentKeyIndex--
-	}
-	if scanner.currentKeyIndex == -1 {
-		scanner.nextBlock()
+		if scanner.currentKeyIndex == -1 {
+			scanner.nextBlock()
+		}
 	}
 
 	return queryResult, nil
