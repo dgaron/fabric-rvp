@@ -40,7 +40,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, -1, nil, nil}, nil
+	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, nil, -1}, nil
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
@@ -50,9 +50,9 @@ type historyScanner struct {
 	key          string
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
-	txIndex      int
-	transactions []uint64
 	currentBlock *common.Block
+	transactions []uint64
+	txIndex      int
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -117,12 +117,7 @@ func (scanner *historyScanner) Close() {
 
 // GetHistoryForKeys implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
-	var (
-		rangeScans  []*rangeScan
-		dbItrs      map[string]iterator.Iterator
-		nextBlock   uint64
-		keysInBlock []string
-	)
+	var keys		map[string]keyData
 	for _, key := range keys {
 		rangeScan := constructRangeScan(namespace, key)
 		dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
@@ -130,98 +125,99 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			return nil, err
 		}
 		if dbItr.Last() {
-			indexVal := dbItr.Value()
-			prev, _, _, err := decodeNewIndex(indexVal)
-			if err != nil {
-				return nil, err
-			}
-			if prev > nextBlock {
-				nextBlock = prev
-				keysInBlock = append([]string{}, key)
-			} else if prev == nextBlock {
-				keysInBlock = append(keysInBlock, key)
-			}
+			dbItr.Next()
 		}
 		rangeScans = append(rangeScans, rangeScan)
-		dbItrs[key] = dbItr
+		keys[key] = &keyData{dbItr, nil, -1}
 	}
-	return &parallelHistoryScanner{rangeScans, namespace, keys, dbItrs, q.blockStore, nextBlock, keysInBlock}, nil
+	scanner := &parallelHistoryScanner{namespace, keys, q.blockStore, nil, 0, nil, -1}
+	err := scanner.nextBlock()
+	if err != nil {
+		return nil, err
+	}
+	return scanner, nil
+}
+
+type keyData struct {
+	dbItr			iterator.Iterator
+	transactions	[]uint64
+	txIndex			int
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
 type parallelHistoryScanner struct {
-	rangeScans      []*rangeScan
 	namespace       string
-	keys            []string
-	dbItrs          map[string]iterator.Iterator
+	keys            map[string]keyData
 	blockStore      *blkstorage.BlockStore
+	currentBlock 	*common.Block
 	nextBlockToRead uint64
 	keysInBlock     []string
+	currentKeyIndex	int
 }
 
-// Next() will iterate over the histories for each key by block
-// All key modifications from within the current block will be returned
 func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) {
-	// No keys in next block indicates we have exhausted all iterators
-	if len(scanner.keysInBlock) == 0 {
+	// No keys in next block results in -1 index indicating we've exhausted the iterators
+	if scanner.currentKeyIndex == -1 {
 		return nil, nil
 	}
 
-	// Read the block once for all relevant keys
+	key := &scanner.keysInBlock[scanner.currentKeyIndex]
 	blockNum := scanner.nextBlockToRead
-	currentBlock, err := scanner.blockStore.RetrieveBlockByNumber(blockNum)
+	tranNum := key.transactions[key.txIndex]
+
+	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
+		scanner.namespace, key blockNum, tranNum)
+
+	// Index into stored block & get the tranEnvelope
+	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
+	// Get the transaction from block storage that is associated with this history record
+	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	var queryBatch []*pb.QueryResultBytes
+	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
+	queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, key)
+	if err != nil {
+		return nil, err
+	}
+	if queryResult == nil {
+		// should not happen, but make sure there is inconsistency between historydb and statedb
+		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, key, blockNum, tranNum)
+		return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, key, blockNum, tranNum)
+	}
+	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
+		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
 
-	for _, key := range scanner.keysInBlock {
-		currentIndexVal := scanner.dbItrs[key].Value()
-		_, _, transactions, err := decodeNewIndex(currentIndexVal)
-		if err != nil {
-			return nil, err
-		}
-		for tranNum := range transactions {
-			logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
-				scanner.namespace, key, blockNum, tranNum)
-			// Index into stored block & get the tranEnvelope
-			txEnvelopeBytes := currentBlock.Data.Data[tranNum]
-			// Get the transaction from block storage that is associated with this history record
-			tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
-			if err != nil {
-				return nil, err
-			}
-			// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
-			queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, key)
-			if err != nil {
-				return nil, err
-			}
-			if queryResult == nil {
-				// should not happen, but make sure there is inconsistency between historydb and statedb
-				logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, key, blockNum, tranNum)
-				return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, key, blockNum, tranNum)
-			}
-			logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
-				scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
-
-			queryResultBytes, err := proto.Marshal(queryResult.(proto.Message))
-			if err != nil {
-				return nil, err
-			}
-			queryBatch = append(queryBatch, &pb.QueryResultBytes{ResultBytes: queryResultBytes})
-		}
-		scanner.dbItrs[key].Prev()
+	// Update position trackers
+	key.txIndex--
+	if key.txIndex == -1 {
+		scanner.currentKeyIndex--
+	}
+	if scanner.currentKeyIndex == -1 {
+		scanner.nextBlock()
 	}
 
+	return queryResult, nil
+}
+
+func (scanner *parallelHistoryScanner) Close() {
+	for _, dbItr := range scanner.dbItrs {
+		dbItr.Release()
+	}
+}
+
+func (scanner *parallelHistoryScanner) nextBlock() error {
 	scanner.nextBlockToRead = 0
 	for _, key := range scanner.keys {
-		currentIndexVal := scanner.dbItrs[key].Value()
+		currentIndexVal := scanner.keys[key].dbItr.Value()
 		if currentIndexVal != nil {
-			prev, _, _, err := decodeNewIndex(currentIndexVal)
+			prev, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
 				return nil, err
 			}
+			scanner.keys[key].transactions = transactions
+			scanner.keys[key].txIndex = len(transactions) - 1
 			if prev > scanner.nextBlockToRead {
 				scanner.nextBlockToRead = prev
 				scanner.keysInBlock = append([]string{}, key)
@@ -230,14 +226,11 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 			}
 		}
 	}
-
-	return queryBatch, nil
-}
-
-func (scanner *parallelHistoryScanner) Close() {
-	for _, dbItr := range scanner.dbItrs {
-		dbItr.Release()
+	if len(scanner.keysInBlock) > 0 {
+		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(scanner.nextBlockToRead)
 	}
+	scanner.currentKeyIndex = len(scanner.keysInBlock) - 1
+	return err
 }
 
 // getTxIDandKeyWriteValueFromTran inspects a transaction for writes to a given key
