@@ -210,13 +210,13 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 	scanner.currentBlockNum = 0
 	scanner.keysInBlock = []string{}
 	for key := range scanner.keys {
-		currentIndexVal := scanner.keys[key].dbItr.Value()
-		if currentIndexVal != nil {
-			historyKey := scanner.keys[key].dbItr.Key()
+		historyKey := scanner.keys[key].dbItr.Key()
+		if historyKey != nil {
 			blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
 			if err != nil {
 				return err
 			}
+			currentIndexVal := scanner.keys[key].dbItr.Value()
 			_, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
 				return err
