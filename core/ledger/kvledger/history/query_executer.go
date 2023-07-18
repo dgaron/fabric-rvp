@@ -38,16 +38,18 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore}, nil
+	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, -1}, nil
 }
 
-//historyScanner implements ResultsIterator for iterating through history results
+// historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
-	rangeScan  *rangeScan
-	namespace  string
-	key        string
-	dbItr      iterator.Iterator
-	blockStore *blkstorage.BlockStore
+	rangeScan       *rangeScan
+	namespace       string
+	key             string
+	dbItr           iterator.Iterator
+	blockStore      *blkstorage.BlockStore
+	currentBlock    *common.Block
+	currentBlockNum uint64
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -64,11 +66,22 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if scanner.currentBlockNum != blockNum {
+		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
+		if err != nil {
+			return nil, err
+		}
+		scanner.currentBlockNum = blockNum
+	}
+
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
+	// Index into stored block & get the tranEnvelope
+	tranEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
 	// Get the transaction from block storage that is associated with this history record
-	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(tranEnvelopeBytes)
 	if err != nil {
 		return nil, err
 	}
