@@ -123,7 +123,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			return nil, err
 		}
 		dbItr.Last()
-		keyMap[key] = keyData{dbItr, nil, -1}
+		keyMap[key] = keyData{rangeScan, dbItr, nil, -1}
 	}
 	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, -1}
 	err := scanner.nextBlock()
@@ -134,6 +134,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 }
 
 type keyData struct {
+	rangeScan    *rangeScan
 	dbItr        iterator.Iterator
 	transactions []uint64
 	txIndex      int
@@ -145,7 +146,7 @@ type parallelHistoryScanner struct {
 	keys            map[string]keyData
 	blockStore      *blkstorage.BlockStore
 	currentBlock    *common.Block
-	nextBlockToRead uint64
+	currentBlockNum uint64
 	keysInBlock     []string
 	currentKeyIndex int
 }
@@ -157,7 +158,7 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 	}
 
 	key := scanner.keysInBlock[scanner.currentKeyIndex]
-	blockNum := scanner.nextBlockToRead
+	blockNum := scanner.currentBlockNum
 	tranNum := scanner.keys[key].txIndex
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
@@ -206,11 +207,16 @@ func (scanner *parallelHistoryScanner) Close() {
 }
 
 func (scanner *parallelHistoryScanner) nextBlock() error {
-	scanner.nextBlockToRead = 0
+	scanner.currentBlockNum = 0
 	for key := range scanner.keys {
+		historyKey := scanner.keys[key].dbItr.Key()
+		blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
+		if err != nil {
+			return err
+		}
 		currentIndexVal := scanner.keys[key].dbItr.Value()
 		if currentIndexVal != nil {
-			prev, _, transactions, err := decodeNewIndex(currentIndexVal)
+			_, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
 				return err
 			}
@@ -219,16 +225,16 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 				keyData.txIndex = len(transactions) - 1
 				scanner.keys[key] = keyData
 			}
-			if prev > scanner.nextBlockToRead {
-				scanner.nextBlockToRead = prev
+			if blockNum > scanner.currentBlockNum {
+				scanner.currentBlockNum = blockNum
 				scanner.keysInBlock = append([]string{}, key)
-			} else if prev == scanner.nextBlockToRead {
+			} else if blockNum == scanner.currentBlockNum {
 				scanner.keysInBlock = append(scanner.keysInBlock, key)
 			}
 		}
 	}
 	if len(scanner.keysInBlock) > 0 {
-		block, err := scanner.blockStore.RetrieveBlockByNumber(scanner.nextBlockToRead)
+		block, err := scanner.blockStore.RetrieveBlockByNumber(scanner.currentBlockNum)
 		scanner.currentBlock = block
 		if err != nil {
 			return err
