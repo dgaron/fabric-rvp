@@ -189,7 +189,10 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 		scanner.keys[key].dbItr.Prev()
 		scanner.currentKeyIndex--
 		if scanner.currentKeyIndex == -1 {
-			scanner.nextBlock()
+			err := scanner.nextBlock()
+			if err != nil {
+				return nil, nil
+			}
 		}
 	}
 
@@ -197,7 +200,7 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 }
 
 func (scanner *parallelHistoryScanner) Close() {
-	for key, _ := range scanner.keys {
+	for key := range scanner.keys {
 		scanner.keys[key].dbItr.Release()
 	}
 }
