@@ -115,7 +115,7 @@ func (scanner *historyScanner) Close() {
 
 // GetHistoryForKeys implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
-	keyMap := make(map[string]*keyData)
+	keyMap := make(map[string]keyData)
 	for _, key := range keys {
 		rangeScan := constructRangeScan(namespace, key)
 		dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
@@ -123,7 +123,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			return nil, err
 		}
 		dbItr.Last()
-		keyMap[key] = &keyData{rangeScan, dbItr, nil, -1}
+		keyMap[key] = keyData{rangeScan, dbItr, nil, -1}
 	}
 	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, -1}
 	err := scanner.nextBlock()
@@ -143,7 +143,7 @@ type keyData struct {
 // historyScanner implements ResultsIterator for iterating through history results
 type parallelHistoryScanner struct {
 	namespace       string
-	keys            map[string]*keyData
+	keys            map[string]keyData
 	blockStore      *blkstorage.BlockStore
 	currentBlock    *common.Block
 	currentBlockNum uint64
@@ -218,22 +218,27 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 			if err != nil {
 				return err
 			}
+			logger.Debugf("Found historyKey for key: %v and decoded blockNum: %v", key, blockNum)
 			currentIndexVal := scanner.keys[key].dbItr.Value()
 			_, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
 				return err
 			}
-			if keyData, found := scanner.keys[key]; found {
-				keyData.transactions = transactions
-				keyData.txIndex = len(transactions) - 1
-				scanner.keys[key] = keyData
-			}
+
+			keyData := scanner.keys[key]
+			keyData.transactions = transactions
+			keyData.txIndex = len(transactions) - 1
+			scanner.keys[key] = keyData
+				
 			if blockNum > scanner.currentBlockNum {
 				scanner.currentBlockNum = blockNum
 				scanner.keysInBlock = append([]string{}, key)
+				logger.Debugf("Found a higher blockNum: %v", blockNum)
 			} else if blockNum == scanner.currentBlockNum {
 				scanner.keysInBlock = append(scanner.keysInBlock, key)
+				logger.Debugf("Added key %v to the keysInBlock", key)
 			}
+			logger.Debugf("keysInBlock: %v", scanner.keysInBlock)
 		}
 	}
 	if len(scanner.keysInBlock) > 0 {
