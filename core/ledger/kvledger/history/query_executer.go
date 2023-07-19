@@ -159,7 +159,7 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 
 	key := scanner.keysInBlock[scanner.currentKeyIndex]
 	blockNum := scanner.currentBlockNum
-	tranNum := scanner.keys[key].txIndex
+	tranNum := scanner.keys[key].transactions[scanner.keys[key].txIndex]
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, key, blockNum, tranNum)
@@ -185,6 +185,7 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
 		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
 
+	logger.Debugf("Completed scanner.Next(), updating position trackers: tranNum: %v, txIndex: %v, keyIndex: %v", scanner.keys[key].transactions[scanner.keys[key].txIndex], scanner.keys[key].txIndex, scanner.currentKeyIndex)
 	// Update position trackers
 	if scanner.keys[key].txIndex <= 0 {
 		scanner.keys[key].dbItr.Prev()
@@ -242,7 +243,7 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 		}
 	}
 	scanner.currentKeyIndex = len(scanner.keysInBlock) - 1
-	logger.Debugf("Completed scanner.nextBlock: Next block: %v, KeyIndex: %v", scanner.currentBlockNum, scanner.currentKeyIndex)
+	logger.Debugf("Completed scanner.nextBlock: currentBlock: %v, KeyIndex: %v", scanner.currentBlockNum, scanner.currentKeyIndex)
 	return nil
 }
 
