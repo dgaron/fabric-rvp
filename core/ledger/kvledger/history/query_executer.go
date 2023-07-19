@@ -143,7 +143,7 @@ type keyData struct {
 // historyScanner implements ResultsIterator for iterating through history results
 type parallelHistoryScanner struct {
 	namespace       string
-	keys			[]string
+	keys            []string
 	keyMap          map[string]keyData
 	blockStore      *blkstorage.BlockStore
 	currentBlock    *common.Block
@@ -203,7 +203,7 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 }
 
 func (scanner *parallelHistoryScanner) Close() {
-	for key := range scanner.keys {
+	for _, key := range scanner.keys {
 		scanner.keyMap[key].dbItr.Release()
 	}
 }
