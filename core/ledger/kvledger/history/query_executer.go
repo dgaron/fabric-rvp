@@ -215,7 +215,7 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 		logger.Debugf("Key: %v", key)
 		currentIndexVal := scanner.keys[key].dbItr.Value()
 		if currentIndexVal != nil {
-			
+
 			historyKey := scanner.keys[key].dbItr.Key()
 			blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
 			if err != nil {
@@ -242,7 +242,7 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 				logger.Debugf("Added key %v to the keysInBlock", key)
 			}
 		} else {
-			logger.Debugf("Nil historyKey for key %v -- exhausted iterator", key)
+			logger.Debugf("Nil value for key %v -- exhausted iterator", key)
 		}
 		logger.Debugf("keysInBlock: %v", scanner.keysInBlock)
 	}
