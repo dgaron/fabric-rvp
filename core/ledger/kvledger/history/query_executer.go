@@ -125,7 +125,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		dbItr.Last()
 		keyMap[key] = keyData{rangeScan, dbItr, nil, -1}
 	}
-	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, -1}
+	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, 0}
 	err := scanner.nextBlock()
 	if err != nil {
 		return nil, err
@@ -230,7 +230,7 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 			keyData.transactions = transactions
 			keyData.txIndex = len(transactions) - 1
 			scanner.keys[key] = keyData
-				
+
 			if blockNum > scanner.currentBlockNum {
 				scanner.currentBlockNum = blockNum
 				scanner.keysInBlock = append([]string{}, key)
