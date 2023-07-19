@@ -152,8 +152,8 @@ type parallelHistoryScanner struct {
 }
 
 func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) {
-	// No keys in next block results in -1 index indicating we've exhausted the iterators
-	if scanner.currentKeyIndex <= -1 {
+	// No keys in next block indicates we've exhausted the iterators
+	if len(scanner.keysInBlock) == 0 {
 		return nil, nil
 	}
 
@@ -189,8 +189,8 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 	// Update position trackers
 	if scanner.keys[key].txIndex <= 0 {
 		scanner.keys[key].dbItr.Prev()
-		scanner.currentKeyIndex--
-		if scanner.currentKeyIndex <= -1 {
+		scanner.currentKeyIndex++
+		if scanner.currentKeyIndex >= len(scanner.keysInBlock) {
 			err := scanner.nextBlock()
 			if err != nil {
 				return nil, nil
@@ -208,10 +208,11 @@ func (scanner *parallelHistoryScanner) Close() {
 }
 
 func (scanner *parallelHistoryScanner) nextBlock() error {
-	logger.Debugf("Endering nextBlock()")
+	logger.Debugf("Entering nextBlock()")
 	scanner.currentBlockNum = 0
 	scanner.keysInBlock = []string{}
 	for key := range scanner.keys {
+		logger.Debugf("Key: %v", key)
 		historyKey := scanner.keys[key].dbItr.Key()
 		if historyKey != nil {
 			blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
@@ -238,8 +239,10 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 				scanner.keysInBlock = append(scanner.keysInBlock, key)
 				logger.Debugf("Added key %v to the keysInBlock", key)
 			}
-			logger.Debugf("keysInBlock: %v", scanner.keysInBlock)
+		} else {
+			logger.Debugf("Nil historyKey for key %v -- exhausted iterator", key)
 		}
+		logger.Debugf("keysInBlock: %v", scanner.keysInBlock)
 	}
 	if len(scanner.keysInBlock) > 0 {
 		block, err := scanner.blockStore.RetrieveBlockByNumber(scanner.currentBlockNum)
@@ -248,7 +251,7 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 			return err
 		}
 	}
-	scanner.currentKeyIndex = len(scanner.keysInBlock) - 1
+	scanner.currentKeyIndex = 0
 	logger.Debugf("Completed scanner.nextBlock: currentBlock: %v, keyIndex: %v, keysInBlock: %v", scanner.currentBlockNum, scanner.currentKeyIndex, scanner.keysInBlock)
 	return nil
 }
