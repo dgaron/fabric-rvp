@@ -208,43 +208,42 @@ func (scanner *parallelHistoryScanner) Close() {
 }
 
 func (scanner *parallelHistoryScanner) nextBlock() error {
-	logger.Debugf("Entering nextBlock()")
 	scanner.currentBlockNum = 0
 	scanner.keysInBlock = []string{}
-	for key := range scanner.keys {
-		logger.Debugf("Key: %v", key)
-		currentIndexVal := scanner.keys[key].dbItr.Value()
+
+	keys := []string
+	for k := range scanner.keys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		currentIndexVal := scanner.keys[k].dbItr.Value()
 		if currentIndexVal != nil {
 
-			historyKey := scanner.keys[key].dbItr.Key()
-			blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
+			historyKey := scanner.keys[k].dbItr.Key()
+			blockNum, err := scanner.keys[k].rangeScan.decodeBlockNum(historyKey)
 			if err != nil {
 				return err
 			}
-			logger.Debugf("Found historyKey for key: %v and decoded blockNum: %v", key, blockNum)
 
 			_, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
 				return err
 			}
 
-			keyData := scanner.keys[key]
+			keyData := scanner.keys[k]
 			keyData.transactions = transactions
 			keyData.txIndex = len(transactions) - 1
-			scanner.keys[key] = keyData
+			scanner.keys[k] = keyData
 
 			if blockNum > scanner.currentBlockNum {
 				scanner.currentBlockNum = blockNum
 				scanner.keysInBlock = append([]string{}, key)
-				logger.Debugf("Found a higher blockNum: %v", blockNum)
 			} else if blockNum == scanner.currentBlockNum {
 				scanner.keysInBlock = append(scanner.keysInBlock, key)
-				logger.Debugf("Added key %v to the keysInBlock", key)
 			}
-		} else {
-			logger.Debugf("Nil value for key %v -- exhausted iterator", key)
 		}
-		logger.Debugf("keysInBlock: %v", scanner.keysInBlock)
 	}
 	if len(scanner.keysInBlock) > 0 {
 		block, err := scanner.blockStore.RetrieveBlockByNumber(scanner.currentBlockNum)
