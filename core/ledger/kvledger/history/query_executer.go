@@ -208,6 +208,7 @@ func (scanner *parallelHistoryScanner) Close() {
 }
 
 func (scanner *parallelHistoryScanner) nextBlock() error {
+	logger.Debugf("Endering nextBlock()")
 	scanner.currentBlockNum = 0
 	scanner.keysInBlock = []string{}
 	for key := range scanner.keys {
@@ -243,7 +244,7 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 		}
 	}
 	scanner.currentKeyIndex = len(scanner.keysInBlock) - 1
-	logger.Debugf("Completed scanner.nextBlock: currentBlock: %v, KeyIndex: %v", scanner.currentBlockNum, scanner.currentKeyIndex)
+	logger.Debugf("Completed scanner.nextBlock: currentBlock: %v, keyIndex: %v, keysInBlock: %v", scanner.currentBlockNum, scanner.currentKeyIndex, scanner.keysInBlock)
 	return nil
 }
 
