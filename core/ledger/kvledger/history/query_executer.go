@@ -211,12 +211,12 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 	scanner.keysInBlock = []string{}
 	for key := range scanner.keys {
 		historyKey := scanner.keys[key].dbItr.Key()
-		blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
-		if err != nil {
-			return err
-		}
-		currentIndexVal := scanner.keys[key].dbItr.Value()
-		if currentIndexVal != nil {
+		if historyKey != nil {
+			blockNum, err := scanner.keys[key].rangeScan.decodeBlockNum(historyKey)
+			if err != nil {
+				return err
+			}
+			currentIndexVal := scanner.keys[key].dbItr.Value()
 			_, _, transactions, err := decodeNewIndex(currentIndexVal)
 			if err != nil {
 				return err
