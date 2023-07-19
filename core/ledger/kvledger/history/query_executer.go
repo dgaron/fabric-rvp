@@ -115,7 +115,7 @@ func (scanner *historyScanner) Close() {
 
 // GetHistoryForKeys implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
-	keyMap := make(map[string]keyData)
+	keyMap := make(map[string]*keyData)
 	for _, key := range keys {
 		rangeScan := constructRangeScan(namespace, key)
 		dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
@@ -123,7 +123,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			return nil, err
 		}
 		dbItr.Last()
-		keyMap[key] = keyData{rangeScan, dbItr, nil, -1}
+		keyMap[key] = &keyData{rangeScan, dbItr, nil, -1}
 	}
 	scanner := &parallelHistoryScanner{namespace, keyMap, q.blockStore, nil, 0, nil, -1}
 	err := scanner.nextBlock()
@@ -143,7 +143,7 @@ type keyData struct {
 // historyScanner implements ResultsIterator for iterating through history results
 type parallelHistoryScanner struct {
 	namespace       string
-	keys            map[string]keyData
+	keys            map[string]*keyData
 	blockStore      *blkstorage.BlockStore
 	currentBlock    *common.Block
 	currentBlockNum uint64
