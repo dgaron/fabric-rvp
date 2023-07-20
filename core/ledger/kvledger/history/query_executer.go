@@ -187,8 +187,12 @@ func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) 
 		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
 
 	logger.Debugf("Completed scanner.Next(), updating position trackers: tranNum: %v, txIndex: %v, keyIndex: %v", scanner.keyMap[key].transactions[scanner.keyMap[key].txIndex], scanner.keyMap[key].txIndex, scanner.currentKeyIndex)
+
+	keyData := scanner.keyMap[key]
+	keyData.txIndex--
+	scanner.keyMap[key] = keyData
 	// Update position trackers
-	if scanner.keyMap[key].txIndex <= 0 {
+	if scanner.keyMap[key].txIndex <= -1 {
 		scanner.keyMap[key].dbItr.Prev()
 		scanner.currentKeyIndex++
 		if scanner.currentKeyIndex >= len(scanner.keysInBlock) {
