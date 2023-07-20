@@ -38,18 +38,19 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, -1}, nil
+	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, 0, false}, nil
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
-	rangeScan       *rangeScan
-	namespace       string
-	key             string
-	dbItr           iterator.Iterator
-	blockStore      *blkstorage.BlockStore
-	currentBlock    *common.Block
-	currentBlockNum uint64
+	rangeScan            *rangeScan
+	namespace            string
+	key                  string
+	dbItr                iterator.Iterator
+	blockStore           *blkstorage.BlockStore
+	currentBlock         *common.Block
+	currentBlockNum      uint64
+	isCurrentBlockNumSet bool
 }
 
 // Next iterates to the next key, in the order of newest to oldest, from history scanner.
@@ -67,12 +68,13 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 		return nil, err
 	}
 
-	if scanner.currentBlockNum != blockNum {
+	if !scanner.isCurrentBlockNumSet || scanner.currentBlockNum != blockNum {
 		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
 		if err != nil {
 			return nil, err
 		}
 		scanner.currentBlockNum = blockNum
+		scanner.isCurrentBlockNumSet = true
 	}
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
