@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -18,6 +20,8 @@ import (
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	protoutil "github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"io/ioutil"
+	"os"
 )
 
 var logger = flogging.MustGetLogger("history")
@@ -77,23 +81,33 @@ type DB struct {
 
 // Commit implements method in HistoryDB interface
 func (d *DB) Commit(block *common.Block) error {
-
 	blockNo := block.Header.Number
-	//Set the starting tranNo to 0
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
+	filePath := "/var/PeerStorage/historyData.json"
+	dataMap := make(map[string]map[string]string)
+
+	// Check if the file exists
+	if _, err := os.Stat(filePath); err == nil {
+		file, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			return err
+		}
+
+		// Load the existing data
+		err = json.Unmarshal(file, &dataMap)
+		if err != nil {
+			return err
+		}
+	}
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
 
-	// Get the invalidation byte array for the block
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
-
-	// write each tran's write set to history db
 	for _, envBytes := range block.Data.Data {
 
-		// If the tran is marked as invalid, skip it
 		if txsFilter.IsInvalid(int(tranNo)) {
 			logger.Debugf("Channel [%s]: Skipping history write for invalid transaction number %d",
 				d.name, tranNo)
@@ -117,7 +131,6 @@ func (d *DB) Commit(block *common.Block) error {
 		}
 
 		if common.HeaderType(chdr.Type) == common.HeaderType_ENDORSER_TRANSACTION {
-			// extract RWSet from transaction
 			respPayload, err := protoutil.GetActionFromEnvelope(envBytes)
 			if err != nil {
 				return err
@@ -126,14 +139,15 @@ func (d *DB) Commit(block *common.Block) error {
 			if err = txRWSet.FromProtoBytes(respPayload.Results); err != nil {
 				return err
 			}
-			// add a history record for each write
 			for _, nsRWSet := range txRWSet.NsRwSets {
 				ns := nsRWSet.NameSpace
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
-					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
 					dbBatch.Put(dataKey, emptyValue)
+
+					jsonKey := fmt.Sprintf("%s_%d_%d", kvWrite.Key, blockNo, tranNo)
+					dataMap[jsonKey] = map[string]string{"value": string(kvWrite.Value)}
 				}
 			}
 
@@ -143,15 +157,16 @@ func (d *DB) Commit(block *common.Block) error {
 		tranNo++
 	}
 
-	// add savepoint for recovery purpose
 	height := version.NewHeight(blockNo, tranNo)
 	dbBatch.Put(savePointKey, height.ToBytes())
 
-	// write the block's history records and savepoint to LevelDB
-	// Setting snyc to true as a precaution, false may be an ok optimization after further testing.
 	if err := d.levelDB.WriteBatch(dbBatch, true); err != nil {
 		return err
 	}
+
+	// Write the updated data back to the file
+	file, _ := json.MarshalIndent(dataMap, "", " ")
+	_ = ioutil.WriteFile(filePath, file, 0644)
 
 	logger.Debugf("Channel [%s]: Updates committed to history database for blockNo [%v]", d.name, blockNo)
 	return nil
