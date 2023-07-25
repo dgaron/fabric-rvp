@@ -20,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	protoutil "github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"io/ioutil"
 	"os"
 )
 
@@ -85,29 +84,20 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
-	filePath := "/var/PeerStorage/historyData.json"
-	dataMap := make([]map[string]string, 0)
-
-	// Check if the file exists
-	if _, err := os.Stat(filePath); err == nil {
-		file, err := ioutil.ReadFile(filePath)
-		if err != nil {
-			return err
-		}
-
-		// Load the existing data
-		err = json.Unmarshal(file, &dataMap)
-		if err != nil {
-			return err
-		}
-	}
+	filePath := "/var/PeerStorage/historyData.ndjson"
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
 
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
-	for _, envBytes := range block.Data.Data {
 
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, envBytes := range block.Data.Data {
 		if txsFilter.IsInvalid(int(tranNo)) {
 			logger.Debugf("Channel [%s]: Skipping history write for invalid transaction number %d",
 				d.name, tranNo)
@@ -152,7 +142,14 @@ func (d *DB) Commit(block *common.Block) error {
 						"tranNo":  fmt.Sprintf("%d", tranNo),
 						"value":   string(kvWrite.Value),
 					}
-					dataMap = append(dataMap, jsonData)
+					jsonDataBytes, err := json.Marshal(jsonData)
+					if err != nil {
+						return err
+					}
+					_, err = file.WriteString(string(jsonDataBytes) + "\n")
+					if err != nil {
+						return err
+					}
 				}
 			}
 
@@ -168,10 +165,6 @@ func (d *DB) Commit(block *common.Block) error {
 	if err := d.levelDB.WriteBatch(dbBatch, true); err != nil {
 		return err
 	}
-
-	// Write the updated data back to the file
-	file, _ := json.MarshalIndent(dataMap, "", " ")
-	_ = ioutil.WriteFile(filePath, file, 0644)
 
 	logger.Debugf("Channel [%s]: Updates committed to history database for blockNo [%v]", d.name, blockNo)
 	return nil
