@@ -86,7 +86,7 @@ func (d *DB) Commit(block *common.Block) error {
 
 	dbBatch := d.levelDB.NewUpdateBatch()
 	filePath := "/var/PeerStorage/historyData.json"
-	dataMap := make(map[string]map[string]string)
+	dataMap := make([]map[string]string, 0)
 
 	// Check if the file exists
 	if _, err := os.Stat(filePath); err == nil {
@@ -146,13 +146,18 @@ func (d *DB) Commit(block *common.Block) error {
 					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
 					dbBatch.Put(dataKey, emptyValue)
 
-					jsonKey := fmt.Sprintf("%s_%d_%d", kvWrite.Key, blockNo, tranNo)
-					dataMap[jsonKey] = map[string]string{"value": string(kvWrite.Value)}
+					jsonData := map[string]string{
+						"key":     kvWrite.Key,
+						"blockNo": fmt.Sprintf("%d", blockNo),
+						"tranNo":  fmt.Sprintf("%d", tranNo),
+						"value":   string(kvWrite.Value),
+					}
+					dataMap = append(dataMap, jsonData)
 				}
 			}
 
 		} else {
-			logger.Debugf("Skipping transaction [%d] since it is not an endorsement transaction\n", tranNo)
+			logger.Debugf("Skipping transaction [%d] since it is not an endorsement transaction\\n", tranNo)
 		}
 		tranNo++
 	}
