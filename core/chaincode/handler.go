@@ -966,22 +966,21 @@ func (h *Handler) HandleGetVersionForKey(msg *pb.ChaincodeMessage, txContext *Tr
 		return nil, errors.WithStack(err)
 	}
 
-	txContext.InitializeQueryContext(iterID, historyIter)
+	totalReturnLimit := h.calculateTotalReturnLimit(nil)
 
-	// Next() returns the selected version of the key
-	queryResult, err := historyIter.Next()
+	txContext.InitializeQueryContext(iterID, historyIter)
+	payload, err := h.QueryResponseBuilder.BuildQueryResponse(txContext, historyIter, iterID, false, totalReturnLimit)
 	if err != nil {
 		txContext.CleanupQueryContext(iterID)
 		return nil, errors.WithStack(err)
 	}
 
-	queryResultBytes, err := proto.Marshal(queryResult.(proto.Message))
+	payloadBytes, err := proto.Marshal(payload)
 	if err != nil {
 		txContext.CleanupQueryContext(iterID)
 		return nil, errors.Wrap(err, "marshal failed")
 	}
 
-	// TODO: Reexamine packaging for single result
 	queryResponse := []*pb.QueryResultBytes{}
 	queryResponse = append(queryResponse, &pb.QueryResultBytes{ResultBytes: queryResultBytes})
 
