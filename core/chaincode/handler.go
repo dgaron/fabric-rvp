@@ -961,15 +961,15 @@ func (h *Handler) HandleGetVersionForKey(msg *pb.ChaincodeMessage, txContext *Tr
 		return nil, errors.Wrap(err, "unmarshal failed")
 	}
 
-	historyIter, err := txContext.HistoryQueryExecutor.GetVersionForKey(namespaceID, getVersionForKey.Key, getVersionForKey.Version)
+	versionIter, err := txContext.HistoryQueryExecutor.GetVersionForKey(namespaceID, getVersionForKey.Key, getVersionForKey.Version)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	totalReturnLimit := h.calculateTotalReturnLimit(nil)
 
-	txContext.InitializeQueryContext(iterID, historyIter)
-	payload, err := h.QueryResponseBuilder.BuildQueryResponse(txContext, historyIter, iterID, false, totalReturnLimit)
+	txContext.InitializeQueryContext(iterID, versionIter)
+	payload, err := h.QueryResponseBuilder.BuildQueryResponse(txContext, versionIter, iterID, false, totalReturnLimit)
 	if err != nil {
 		txContext.CleanupQueryContext(iterID)
 		return nil, errors.WithStack(err)
