@@ -981,17 +981,6 @@ func (h *Handler) HandleGetVersionForKey(msg *pb.ChaincodeMessage, txContext *Tr
 		return nil, errors.Wrap(err, "marshal failed")
 	}
 
-	queryResponse := []*pb.QueryResultBytes{}
-	queryResponse = append(queryResponse, &pb.QueryResultBytes{ResultBytes: queryResultBytes})
-
-	payload := &pb.QueryResponse{Results: queryResponse, HasMore: false, Id: iterID}
-
-	payloadBytes, err := proto.Marshal(payload)
-	if err != nil {
-		txContext.CleanupQueryContext(iterID)
-		return nil, errors.Wrap(err, "marshal failed")
-	}
-
 	chaincodeLogger.Debugf("Found version for key. Sending %s", pb.ChaincodeMessage_RESPONSE)
 	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
 }
