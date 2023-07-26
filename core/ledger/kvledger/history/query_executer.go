@@ -331,11 +331,10 @@ func (q *QueryExecutor) GetVersionForKey(namespace string, key string, version u
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-	if !scanner.dbItr.Next() {
-		logger.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
-		return nil, errors.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
-	}
 	for {
+		if !scanner.dbItr.Next() {
+			return nil, nil
+		}
 		indexVal := scanner.dbItr.Value()
 		var (
 			err          error
@@ -373,10 +372,6 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 
 			logger.Debugf("Found key version %d for namespace:%s key:%s from transaction %s", scanner.targetVersion, scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
 			return queryResult, nil
-		}
-		if !scanner.dbItr.Next() {
-			logger.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
-			return nil, errors.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
 		}
 	}
 }
