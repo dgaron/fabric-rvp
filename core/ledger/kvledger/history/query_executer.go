@@ -310,3 +310,71 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 	logger.Debugf("namespace [%s] not found in transaction's ReadWriteSets", namespace)
 	return nil, nil
 }
+
+type versionScanner struct {
+	rangeScan     *rangeScan
+	namespace     string
+	key           string
+	dbItr         iterator.Iterator
+	blockStore    *blkstorage.BlockStore
+	numVersions   uint64
+	targetVersion uint64
+}
+
+func (q *QueryExecutor) GetVersionForKey(namespace string, key string, version uint64) (commonledger.ResultsIterator, error) {
+	rangeScan := constructRangeScan(namespace, key)
+	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
+	if err != nil {
+		return nil, err
+	}
+	return &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, version}, nil
+}
+
+func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
+	var transactions []uint64
+	for {
+		if !scanner.dbItr.Next() {
+			logger.Errorf("No version of key is found for namespace %s, key %s, and version %d ", scanner.namespace, scanner.key, scanner.targetVersion)
+			return nil, errors.Errorf("No version of key is found for namespace %s, key %s, and version %d ", scanner.namespace, scanner.key, scanner.targetVersion)
+		}
+		indexVal := scanner.dbItr.Value()
+		var err error
+		_, scanner.numVersions, transactions, err = decodeNewIndex(indexVal)
+		if err != nil {
+			return nil, err
+		}
+		if scanner.numVersions >= scanner.targetVersion {
+			firstVersionInBlock := scanner.numVersions - uint64(len(transactions))
+			txIndex := scanner.targetVersion - firstVersionInBlock
+			tranNum := transactions[txIndex]
+
+			historyKey := scanner.dbItr.Key()
+			blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
+			if err != nil {
+				return nil, err
+			}
+			tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+			if err != nil {
+				return nil, err
+			}
+
+			// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
+			queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.key)
+			if err != nil {
+				return nil, err
+			}
+			if queryResult == nil {
+				// should not happen, but make sure there is inconsistency between historydb and statedb
+				logger.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
+				return nil, errors.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
+			}
+
+			logger.Debugf("Found key version %d for namespace:%s key:%s from transaction %s", scanner.targetVersion, scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
+			return queryResult, nil
+		}
+	}
+}
+
+func (scanner *versionScanner) Close() {
+	scanner.dbItr.Release()
+}

@@ -192,6 +192,8 @@ func (h *Handler) handleMessageReadyState(msg *pb.ChaincodeMessage) error {
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKey)
 	case pb.ChaincodeMessage_GET_HISTORY_FOR_KEYS:
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKeys)
+	case pb.ChaincodeMessage_GET_VERSION_FOR_KEY:
+		go h.HandleTransaction(msg, h.HandleGetVersionForKey)
 	case pb.ChaincodeMessage_QUERY_STATE_NEXT:
 		go h.HandleTransaction(msg, h.HandleQueryStateNext)
 	case pb.ChaincodeMessage_QUERY_STATE_CLOSE:
@@ -943,6 +945,55 @@ func (h *Handler) HandleGetHistoryForKeys(msg *pb.ChaincodeMessage, txContext *T
 	}
 
 	chaincodeLogger.Debugf("Got keys and values. Sending %s", pb.ChaincodeMessage_RESPONSE)
+	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
+}
+
+func (h *Handler) HandleGetVersionForKey(msg *pb.ChaincodeMessage, txContext *TransactionContext) (*pb.ChaincodeMessage, error) {
+	if txContext.HistoryQueryExecutor == nil {
+		return nil, errors.New("history database is not enabled")
+	}
+	iterID := h.UUIDGenerator.New()
+	namespaceID := txContext.NamespaceID
+
+	getVersionForKey := &pb.GetVersionForKey{}
+	err := proto.Unmarshal(msg.Payload, getVersionForKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "unmarshal failed")
+	}
+
+	historyIter, err := txContext.HistoryQueryExecutor.GetVersionForKey(namespaceID, getVersionForKey.Key, getVersionForKey.Version)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	txContext.InitializeQueryContext(iterID, historyIter)
+
+	// Next() returns the selected version of the key
+	queryResult, err := historyIter.Next()
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.WithStack(err)
+	}
+
+	queryResultBytes, err := proto.Marshal(queryResult.(proto.Message))
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.Wrap(err, "marshal failed")
+	}
+
+	// TODO: Reexamine packaging for single result
+	queryResponse := []*pb.QueryResultBytes{}
+	queryResponse = append(queryResponse, &pb.QueryResultBytes{ResultBytes: queryResultBytes})
+
+	payload := &pb.QueryResponse{Results: queryResponse, HasMore: false, Id: iterID}
+
+	payloadBytes, err := proto.Marshal(payload)
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.Wrap(err, "marshal failed")
+	}
+
+	chaincodeLogger.Debugf("Found version for key. Sending %s", pb.ChaincodeMessage_RESPONSE)
 	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
 }
 
