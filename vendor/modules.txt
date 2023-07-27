@@ -154,7 +154,7 @@ github.com/hashicorp/hcl/json/token
 ## explicit
 github.com/hyperledger/fabric-amcl/amcl
 github.com/hyperledger/fabric-amcl/amcl/FP256BN
-# github.com/hyperledger/fabric-chaincode-go v0.0.0-20200128192331-2d899240a7ed => /home/andrey/Desktop/fabric-chaincode-go
+# github.com/hyperledger/fabric-chaincode-go v0.0.0-20200128192331-2d899240a7ed => github.com/dgaron/fabric-chaincode-go v0.0.0-20230727171332-e6e0cc1d2f93
 ## explicit
 github.com/hyperledger/fabric-chaincode-go/pkg/statebased
 github.com/hyperledger/fabric-chaincode-go/shim
@@ -176,7 +176,7 @@ github.com/hyperledger/fabric-config/protolator/protoext/peerext
 # github.com/hyperledger/fabric-lib-go v1.0.0
 ## explicit
 github.com/hyperledger/fabric-lib-go/healthz
-# github.com/hyperledger/fabric-protos-go v0.0.0-20201028172056-a3136dde2354 => /home/andrey/Desktop/fabric-protos/bindings/go-apiv1
+# github.com/hyperledger/fabric-protos-go v0.0.0-20201028172056-a3136dde2354 => github.com/dgaron/fabric-protos/bindings/go-apiv1 v0.0.0-20230725170539-fb67c0353c32
 ## explicit
 github.com/hyperledger/fabric-protos-go/common
 github.com/hyperledger/fabric-protos-go/discovery
@@ -528,5 +528,5 @@ gopkg.in/yaml.v2
 gopkg.in/yaml.v3
 # golang.org/x/sys => golang.org/x/sys v0.0.0-20190920190810-ef0ce1748380
 # github.com/onsi/gomega => github.com/onsi/gomega v1.9.0
-# github.com/hyperledger/fabric-protos-go => /home/andrey/Desktop/fabric-protos/bindings/go-apiv1
-# github.com/hyperledger/fabric-chaincode-go => /home/andrey/Desktop/fabric-chaincode-go
+# github.com/hyperledger/fabric-protos-go => github.com/dgaron/fabric-protos/bindings/go-apiv1 v0.0.0-20230725170539-fb67c0353c32
+# github.com/hyperledger/fabric-chaincode-go => github.com/dgaron/fabric-chaincode-go v0.0.0-20230727171332-e6e0cc1d2f93
