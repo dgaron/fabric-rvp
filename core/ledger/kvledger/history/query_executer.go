@@ -332,7 +332,7 @@ func (q *QueryExecutor) GetVersionForKey(namespace string, key string, version u
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	for {
-		if !scanner.dbItr.Next() {
+		if !scanner.dbItr.Next() || scanner.numVersions >= scanner.targetVersion {
 			return nil, nil
 		}
 		indexVal := scanner.dbItr.Value()
@@ -345,9 +345,12 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 			return nil, err
 		}
 		if scanner.numVersions >= scanner.targetVersion {
-			firstVersionInBlock := scanner.numVersions - uint64(len(transactions))
+			firstVersionInBlock := scanner.numVersions - uint64(len(transactions)) + 1
 			txIndex := scanner.targetVersion - firstVersionInBlock
 			tranNum := transactions[txIndex]
+
+			logger.Debugf("FViB: %d, txIndex: %d, tranNum: %d", firstVersionInBlock, txIndex, tranNum)
+			logger.Debugf("Transactions: %v", transactions)
 
 			historyKey := scanner.dbItr.Key()
 			blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
