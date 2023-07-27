@@ -193,7 +193,7 @@ func (h *Handler) handleMessageReadyState(msg *pb.ChaincodeMessage) error {
 	case pb.ChaincodeMessage_GET_HISTORY_FOR_KEYS:
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKeys)
 	case pb.ChaincodeMessage_GET_VERSION_FOR_KEY:
-		go h.HandleTransaction(msg, h.HandleGetVersionForKey)
+		go h.HandleTransaction(msg, h.HandleGetVersionsForKey)
 	case pb.ChaincodeMessage_QUERY_STATE_NEXT:
 		go h.HandleTransaction(msg, h.HandleQueryStateNext)
 	case pb.ChaincodeMessage_QUERY_STATE_CLOSE:
@@ -948,20 +948,20 @@ func (h *Handler) HandleGetHistoryForKeys(msg *pb.ChaincodeMessage, txContext *T
 	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
 }
 
-func (h *Handler) HandleGetVersionForKey(msg *pb.ChaincodeMessage, txContext *TransactionContext) (*pb.ChaincodeMessage, error) {
+func (h *Handler) HandleGetVersionsForKey(msg *pb.ChaincodeMessage, txContext *TransactionContext) (*pb.ChaincodeMessage, error) {
 	if txContext.HistoryQueryExecutor == nil {
 		return nil, errors.New("history database is not enabled")
 	}
 	iterID := h.UUIDGenerator.New()
 	namespaceID := txContext.NamespaceID
 
-	getVersionForKey := &pb.GetVersionForKey{}
-	err := proto.Unmarshal(msg.Payload, getVersionForKey)
+	getVersionsForKey := &pb.GetVersionsForKey{}
+	err := proto.Unmarshal(msg.Payload, getVersionsForKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "unmarshal failed")
 	}
 
-	versionIter, err := txContext.HistoryQueryExecutor.GetVersionForKey(namespaceID, getVersionForKey.Key, getVersionForKey.Version)
+	versionIter, err := txContext.HistoryQueryExecutor.GetVersionsForKey(namespaceID, getVersionsForKey.Key, getVersionsForKey.Start, getVersionsForKey.End)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

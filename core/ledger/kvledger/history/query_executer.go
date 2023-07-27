@@ -312,27 +312,37 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 }
 
 type versionScanner struct {
-	rangeScan     *rangeScan
-	namespace     string
-	key           string
-	dbItr         iterator.Iterator
-	blockStore    *blkstorage.BlockStore
-	numVersions   uint64
-	targetVersion uint64
+	rangeScan    *rangeScan
+	namespace    string
+	key          string
+	dbItr        iterator.Iterator
+	blockStore   *blkstorage.BlockStore
+	currentBlock *common.Block
+	indexVal     newIndex
+	txIndex      int
+	start        uint64
+	end          uint64
 }
 
-func (q *QueryExecutor) GetVersionForKey(namespace string, key string, version uint64) (commonledger.ResultsIterator, error) {
+func (q *QueryExecutor) GetVersionForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
 	rangeScan := constructRangeScan(namespace, key)
 	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
 		return nil, err
 	}
-	return &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, version}, nil
+	// Invoke Next until we find the first version
+
+	// TODO: Move iterator until we find the start version
+
+	return &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, nil, -1, start, end}, nil
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
+
+	// TODO: End condition & return nil, nil
+
 	for {
-		if !scanner.dbItr.Next() || scanner.numVersions >= scanner.targetVersion {
+		if !scanner.dbItr.Next() {
 			return nil, nil
 		}
 		indexVal := scanner.dbItr.Value()
@@ -344,7 +354,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		if scanner.numVersions >= scanner.targetVersion {
+		if scanner.numVersions <= scanner.start && scanner.numVersions >= scanner.end {
 			firstVersionInBlock := scanner.numVersions - uint64(len(transactions)) + 1
 			txIndex := scanner.targetVersion - firstVersionInBlock
 			tranNum := transactions[txIndex]
