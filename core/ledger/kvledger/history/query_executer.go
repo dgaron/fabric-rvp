@@ -318,77 +318,106 @@ type versionScanner struct {
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
 	currentBlock *common.Block
-	indexVal     newIndex
+	numVersions  uint64
+	transactions []uint64
 	txIndex      int
 	start        uint64
 	end          uint64
 }
 
 func (q *QueryExecutor) GetVersionForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
+	if end < start {
+		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
+	}
+	
 	rangeScan := constructRangeScan(namespace, key)
 	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
 		return nil, err
 	}
-	// Invoke Next until we find the first version
-
-	// TODO: Move iterator until we find the start version
-
-	return &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, nil, -1, start, end}, nil
-}
-
-func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-
-	// TODO: End condition & return nil, nil
-
+	scanner := &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, 0, nil, 0, start, end}
+	// Find first block containing first version in range
 	for {
 		if !scanner.dbItr.Next() {
+			// Iterator exhausted, first version in range > last version of key
 			return nil, nil
 		}
 		indexVal := scanner.dbItr.Value()
-		var (
-			err          error
-			transactions []uint64
-		)
-		_, scanner.numVersions, transactions, err = decodeNewIndex(indexVal)
+		_, scanner.numVersions, scanner.transactions, err = decodeNewIndex(indexVal)
 		if err != nil {
 			return nil, err
-		}
-		if scanner.numVersions <= scanner.start && scanner.numVersions >= scanner.end {
-			firstVersionInBlock := scanner.numVersions - uint64(len(transactions)) + 1
-			txIndex := scanner.targetVersion - firstVersionInBlock
-			tranNum := transactions[txIndex]
-
-			logger.Debugf("FViB: %d, txIndex: %d, tranNum: %d", firstVersionInBlock, txIndex, tranNum)
-			logger.Debugf("Transactions: %v", transactions)
-
-			historyKey := scanner.dbItr.Key()
-			blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
-			if err != nil {
-				return nil, err
-			}
-			tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
-			if err != nil {
-				return nil, err
-			}
-
-			// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
-			queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.key)
-			if err != nil {
-				return nil, err
-			}
-			if queryResult == nil {
-				// should not happen, but make sure there is inconsistency between historydb and statedb
-				logger.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
-				return nil, errors.Errorf("Version %d not found for key %s for namespace:%s", scanner.targetVersion, scanner.key, scanner.namespace)
-			}
-
-			logger.Debugf("Found key version %d for namespace:%s key:%s from transaction %s", scanner.targetVersion, scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
-			return queryResult, nil
+		} 
+		if scanner.numVersions >= scanner.start {
+			scanner.updateBlock()
+			return scanner, nil
 		}
 	}
 }
 
+func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
+	if scanner.txIndex == len(transactions) {
+		// Returned all the transactions from the block, fetch new block & update indices
+		if !scanner.dbItr.Next() {
+			// Iterator exhausted, last version in range already found
+			return nil, nil
+		}
+		indexVal := scanner.dbItr.Value()
+		var err error
+		_, scanner.numVersions, scanner.transactions, err = decodeNewIndex(indexVal)
+		if err != nil {
+			return nil, err
+		}
+		scanner.updateBlock()
+	}
+
+	firstVersionInBlock := scanner.numVersions - uint64(len(transactions)) + 1
+	currentVersionNum := firstVersionInBlock + scanner.txIndex
+	if currentVersionNum > scanner.end {
+		logger.Debugf("End version %d found for key: %s", scanner.end, scanner.key)
+		return nil, nil
+	}	
+
+	tranNum := transactions[scanner.txIndex]
+
+	// Index into stored block & get the tranEnvelope
+	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
+	// Get the transaction from block storage that is associated with this history record
+	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
+	queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.key)
+	if err != nil {
+		return nil, err
+	}
+	if queryResult == nil {
+		// should not happen, but make sure there is inconsistency between historydb and statedb
+		logger.Errorf("Version %d not found for key %s for namespace:%s", currentVersionNum, scanner.key, scanner.namespace)
+		return nil, errors.Errorf("Version %d not found for key %s for namespace:%s", currentVersionNum, scanner.key, scanner.namespace)
+	}
+
+	scanner.txIndex++
+
+	logger.Debugf("Found key version %d for namespace:%s key:%s from transaction %s", currentVersionNum, scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
+	return queryResult, nil
+	
+
+}
+
 func (scanner *versionScanner) Close() {
 	scanner.dbItr.Release()
+}
+
+func (scanner *versionScanner) updateBlock() {
+	historyKey := scanner.dbItr.Key()
+	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
+	if err != nil {
+		return nil, err
+	}
+	scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
+	if err != nil {
+		return nil, err
+	}
 }
