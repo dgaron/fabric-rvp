@@ -192,7 +192,7 @@ func (h *Handler) handleMessageReadyState(msg *pb.ChaincodeMessage) error {
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKey)
 	case pb.ChaincodeMessage_GET_HISTORY_FOR_KEYS:
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKeys)
-	case pb.ChaincodeMessage_GET_VERSION_FOR_KEY:
+	case pb.ChaincodeMessage_GET_VERSIONS_FOR_KEY:
 		go h.HandleTransaction(msg, h.HandleGetVersionsForKey)
 	case pb.ChaincodeMessage_QUERY_STATE_NEXT:
 		go h.HandleTransaction(msg, h.HandleQueryStateNext)
