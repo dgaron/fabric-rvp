@@ -325,11 +325,11 @@ type versionScanner struct {
 	end          uint64
 }
 
-func (q *QueryExecutor) GetVersionForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
+func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
 	if end < start {
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
-	
+
 	rangeScan := constructRangeScan(namespace, key)
 	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
@@ -346,16 +346,18 @@ func (q *QueryExecutor) GetVersionForKey(namespace string, key string, start uin
 		_, scanner.numVersions, scanner.transactions, err = decodeNewIndex(indexVal)
 		if err != nil {
 			return nil, err
-		} 
+		}
 		if scanner.numVersions >= scanner.start {
-			scanner.updateBlock()
+			if err = scanner.updateBlock(); err != nil {
+				return nil, err
+			}
 			return scanner, nil
 		}
 	}
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-	if scanner.txIndex == len(transactions) {
+	if scanner.txIndex == len(scanner.transactions) {
 		// Returned all the transactions from the block, fetch new block & update indices
 		if !scanner.dbItr.Next() {
 			// Iterator exhausted, last version in range already found
@@ -367,17 +369,19 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		scanner.updateBlock()
+		if err = scanner.updateBlock(); err != nil {
+			return nil, err
+		}
 	}
 
-	firstVersionInBlock := scanner.numVersions - uint64(len(transactions)) + 1
-	currentVersionNum := firstVersionInBlock + scanner.txIndex
+	firstVersionInBlock := scanner.numVersions - uint64(len(scanner.transactions)) + 1
+	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
 	if currentVersionNum > scanner.end {
 		logger.Debugf("End version %d found for key: %s", scanner.end, scanner.key)
 		return nil, nil
-	}	
+	}
 
-	tranNum := transactions[scanner.txIndex]
+	tranNum := scanner.transactions[scanner.txIndex]
 
 	// Index into stored block & get the tranEnvelope
 	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
@@ -402,7 +406,6 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 
 	logger.Debugf("Found key version %d for namespace:%s key:%s from transaction %s", currentVersionNum, scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
 	return queryResult, nil
-	
 
 }
 
@@ -410,14 +413,9 @@ func (scanner *versionScanner) Close() {
 	scanner.dbItr.Release()
 }
 
-func (scanner *versionScanner) updateBlock() {
+func (scanner *versionScanner) updateBlock() error {
 	historyKey := scanner.dbItr.Key()
 	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
-	if err != nil {
-		return nil, err
-	}
 	scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
-	if err != nil {
-		return nil, err
-	}
+	return err
 }
