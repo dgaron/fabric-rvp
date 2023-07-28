@@ -597,14 +597,14 @@ func (h *Handler) handleGetVersionsForKey(key string, start uint64, end uint64, 
 	}
 	defer h.deleteResponseChannel(channelID, txid)
 
-	// Send GET_VERSION_FOR_KEY message to peer chaincode support
+	// Send GET_VERSIONS_FOR_KEY message to peer chaincode support
 	payloadBytes := marshalOrPanic(&pb.GetVersionsForKey{Key: key, Start: start, End: end})
 
-	msg := &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_GET_VERSION_FOR_KEY, Payload: payloadBytes, Txid: txid, ChannelId: channelID}
+	msg := &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_GET_VERSIONS_FOR_KEY, Payload: payloadBytes, Txid: txid, ChannelId: channelID}
 	var responseMsg pb.ChaincodeMessage
 
 	if responseMsg, err = h.sendReceive(msg, respChan); err != nil {
-		return nil, fmt.Errorf("[%s] error sending %s: %s", shorttxid(txid), pb.ChaincodeMessage_GET_VERSION_FOR_KEY, err)
+		return nil, fmt.Errorf("[%s] error sending %s: %s", shorttxid(txid), pb.ChaincodeMessage_GET_VERSIONS_FOR_KEY, err)
 	}
 
 	if responseMsg.Type == pb.ChaincodeMessage_RESPONSE {
