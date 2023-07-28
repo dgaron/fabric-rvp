@@ -372,6 +372,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 		if err = scanner.updateBlock(); err != nil {
 			return nil, err
 		}
+		scanner.txIndex = 0
 	}
 
 	firstVersionInBlock := scanner.numVersions - uint64(len(scanner.transactions)) + 1
