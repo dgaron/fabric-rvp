@@ -416,6 +416,9 @@ func (scanner *versionScanner) Close() {
 func (scanner *versionScanner) updateBlock() error {
 	historyKey := scanner.dbItr.Key()
 	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
+	if err != nil {
+		return err
+	}
 	scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
 	return err
 }
