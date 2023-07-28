@@ -339,7 +339,11 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	// Find first block containing first version in range
 	for {
 		if !scanner.dbItr.Next() {
-			// Iterator exhausted, first version in range > last version of key
+			// Iterator exhausted, first version in range > last actual version of key
+			// This ensures first call to Next() returns nil result
+			if scanner.transactions != nil {
+				scanner.txIndex = len(scanner.transactions)
+			}
 			return scanner, nil
 		}
 		indexVal := scanner.dbItr.Value()
