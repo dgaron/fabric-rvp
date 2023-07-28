@@ -340,7 +340,7 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	for {
 		if !scanner.dbItr.Next() {
 			// Iterator exhausted, first version in range > last version of key
-			return nil, nil
+			return scanner, nil
 		}
 		indexVal := scanner.dbItr.Value()
 		_, scanner.numVersions, scanner.transactions, err = decodeNewIndex(indexVal)
@@ -348,6 +348,11 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 			return nil, err
 		}
 		if scanner.numVersions >= scanner.start {
+
+			firstVersionInBlock := scanner.numVersions - uint64(len(scanner.transactions)) + 1
+			firstIndex := scanner.start - firstVersionInBlock
+			scanner.txIndex = int(firstIndex)
+
 			if err = scanner.updateBlock(); err != nil {
 				return nil, err
 			}
