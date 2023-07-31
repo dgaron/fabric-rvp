@@ -41,7 +41,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore}, nil
 }
 
-//historyScanner implements ResultsIterator for iterating through history results
+// historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
 	rangeScan  *rangeScan
 	namespace  string
@@ -106,30 +106,28 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		}
 	}
 	scanner := &multipleHistoryScanner{namespace, validKeys, keyMap, q.blockStore, 0}
-	if err != nil {
-		return nil, err
-	}
 	return scanner, nil
 }
 
 type keyData struct {
-	rangeScan    *rangeScan
-	dbItr        iterator.Iterato
+	rangeScan *rangeScan
+	dbItr     iterator.Iterator
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
 type multipleHistoryScanner struct {
-	namespace       string
-	keys            []string
-	keyMap          map[string]keyData
-	blockStore      *blkstorage.BlockStore
-	keyIndex int
+	namespace  string
+	keys       []string
+	keyMap     map[string]keyData
+	blockStore *blkstorage.BlockStore
+	keyIndex   int
 }
 
 func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) {
 
 	key := scanner.keys[scanner.keyIndex]
 	dbItr := scanner.keyMap[key].dbItr
+	rangeScan := scanner.keyMap[key].rangeScan
 
 	if !dbItr.Prev() {
 		scanner.keyIndex++
@@ -139,12 +137,13 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		}
 		key = scanner.keys[scanner.keyIndex]
 		dbItr = scanner.keyMap[key].dbItr
+		rangeScan = scanner.keyMap[key].rangeScan
 	}
 
 	historyKey := dbItr.Key()
 
 	// Retrieval of key modification proceeds exactly as originally implemented
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	blockNum, tranNum, err := rangeScan.decodeBlockNumTranNum(historyKey)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +168,7 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 	}
 	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
 		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
-	
+
 	return queryResult, nil
 }
 
