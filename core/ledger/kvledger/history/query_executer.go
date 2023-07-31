@@ -138,6 +138,7 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		key = scanner.keys[scanner.keyIndex]
 		dbItr = scanner.keyMap[key].dbItr
 		rangeScan = scanner.keyMap[key].rangeScan
+		dbItr.Prev()
 	}
 
 	historyKey := dbItr.Key()
