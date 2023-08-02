@@ -10,8 +10,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	protoutil "github.com/hyperledger/fabric/protoutil"
@@ -42,7 +42,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore}, nil
 }
 
-//historyScanner implements ResultsIterator for iterating through history results
+// historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
 	rangeScan  *rangeScan
 	namespace  string
@@ -107,30 +107,28 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		}
 	}
 	scanner := &multipleHistoryScanner{namespace, validKeys, keyMap, q.blockStore, 0}
-	if err != nil {
-		return nil, err
-	}
 	return scanner, nil
 }
 
 type keyData struct {
-	rangeScan    *rangeScan
-	dbItr        iterator.Iterato
+	rangeScan *rangeScan
+	dbItr     iterator.Iterator
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
 type multipleHistoryScanner struct {
-	namespace       string
-	keys            []string
-	keyMap          map[string]keyData
-	blockStore      *blkstorage.BlockStore
-	keyIndex int
+	namespace  string
+	keys       []string
+	keyMap     map[string]keyData
+	blockStore *blkstorage.BlockStore
+	keyIndex   int
 }
 
 func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) {
 
 	key := scanner.keys[scanner.keyIndex]
 	dbItr := scanner.keyMap[key].dbItr
+	rangeScan := scanner.keyMap[key].rangeScan
 
 	if !dbItr.Prev() {
 		scanner.keyIndex++
@@ -140,12 +138,14 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		}
 		key = scanner.keys[scanner.keyIndex]
 		dbItr = scanner.keyMap[key].dbItr
+		rangeScan = scanner.keyMap[key].rangeScan
+		dbItr.Prev()
 	}
 
 	historyKey := dbItr.Key()
 
 	// Retrieval of key modification proceeds exactly as originally implemented
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	blockNum, tranNum, err := rangeScan.decodeBlockNumTranNum(historyKey)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 	}
 	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
 		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
-	
+
 	return queryResult, nil
 }
 
@@ -234,15 +234,14 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 	return nil, nil
 }
 
-
 type versionScanner struct {
-	rangeScan    *rangeScan
-	namespace    string
-	key          string
-	dbItr        iterator.Iterator
-	blockStore   *blkstorage.BlockStore
-	start        uint64
-	end          uint64
+	rangeScan  *rangeScan
+	namespace  string
+	key        string
+	dbItr      iterator.Iterator
+	blockStore *blkstorage.BlockStore
+	start      uint64
+	end        uint64
 }
 
 func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
