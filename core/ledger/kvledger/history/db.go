@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -54,8 +55,9 @@ func (p *DBProvider) MarkStartingSavepoint(name string, savepoint *version.Heigh
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
-		levelDB: p.leveldbProvider.GetDBHandle(name),
-		name:    name,
+		levelDB:  p.leveldbProvider.GetDBHandle(name),
+		name:     name,
+		versions: make(map[string][]byte),
 	}
 }
 
@@ -71,8 +73,9 @@ func (p *DBProvider) Drop(channelName string) error {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB *leveldbhelper.DBHandle
-	name    string
+	levelDB  *leveldbhelper.DBHandle
+	name     string
+	versions map[string][]byte
 }
 
 // Commit implements method in HistoryDB interface
@@ -131,23 +134,16 @@ func (d *DB) Commit(block *common.Block) error {
 				ns := nsRWSet.NameSpace
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
-
-					// Construct rangeScan, get dbItr, look up last version of key
-					rangeScan := constructRangeScan(ns, kvWrite.Key)
-					dbItr, err := d.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
-					if err != nil {
-						return err
-					}
 					var versionNum uint64
-					if dbItr.Last() {
-						historyKey := dbItr.Key()
-						versionNum, err = rangeScan.decodeVersionNum(historyKey)
+					versionBytes, present := d.versions[kvWrite.Key]
+					if present {
+						versionNum, _, err = util.DecodeOrderPreservingVarUint64(versionBytes)
 						if err != nil {
 							return err
 						}
 					}
-					dbItr.Release()
 					versionNum++
+					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versionNum)
 
 					dataKey := constructDataKey(ns, kvWrite.Key, versionNum)
 					dataVal := constructDataVal(blockNo, tranNo)
