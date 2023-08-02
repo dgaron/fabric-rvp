@@ -131,9 +131,27 @@ func (d *DB) Commit(block *common.Block) error {
                 ns := nsRWSet.NameSpace
 
                 for _, kvWrite := range nsRWSet.KvRwSet.Writes {
-                    dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
-                    // No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
-                    dbBatch.Put(dataKey, emptyValue)
+
+					// Construct rangeScan, get dbItr, look up last version of key
+					rangeScan := constructRangeScan(ns, kvWrite.Key)
+					dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
+					if err != nil {
+						return err
+					}
+					var versionNum uint64
+					if dbItr.Last() {
+						historyKey := dbItr.Key()
+						versionNum, err = rangeScan.decodeVersionNum(historyKey)
+						if err != nil {
+							return err
+						}
+					}
+					dbItr.Release()
+					versionNum++
+					
+					dataKey := constructDataKey(ns, kvWrite.Key, versionNum)
+					dataVal := constructDataVal(blockNo, tranNo)
+                    dbBatch.Put(dataKey, dataVal)
                 }
             }
 

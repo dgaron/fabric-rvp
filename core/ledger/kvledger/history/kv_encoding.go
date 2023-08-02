@@ -14,7 +14,7 @@ import (
 )
 
 type dataKey []byte
-type dataValue []byte
+type dataVal []byte
 type rangeScan struct {
     startKey, endKey []byte
 }
@@ -38,10 +38,10 @@ func constructDataKey(ns string, key string, versionnum uint64) dataKey {
     return dataKey(k)
 }
 
-func constructDataValue(blocknum uint64, trannum uint64) dataValue {
+func constructDataVal(blocknum uint64, trannum uint64) dataVal {
     v := append([]byte{}, util.EncodeOrderPreservingVarUint64(blocknum)...)
     v = append(v, util.EncodeOrderPreservingVarUint64(trannum)...)
-    return dataValue(v)
+    return dataVal(v)
 }
 
 // constructRangescanKeys returns start and endKey for performing a range scan
@@ -69,13 +69,13 @@ func (r *rangeScan) decodeVersionNum(dataKey dataKey) (uint64, error) {
 	return versionNum, nil
 }
 
-func (r *rangeScan) decodeBlockNumTranNum(dataValue dataValue) (uint64, uint64, error) {
-    blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataValue)
+func (r *rangeScan) decodeBlockNumTranNum(dataVal dataVal) (uint64, uint64, error) {
+    blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataVal)
     if err != nil {
         return 0, 0, err
     }
 
-    tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataValue[blockBytesConsumed:])
+    tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataVal[blockBytesConsumed:])
     if err != nil {
         return 0, 0, err
     }
