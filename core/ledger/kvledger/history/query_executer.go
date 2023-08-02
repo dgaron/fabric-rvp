@@ -60,8 +60,8 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 		return nil, nil
 	}
 
-	historyKey := scanner.dbItr.Key()
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	historyVal := scanner.dbItr.Value()
+	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyVal)
 	if err != nil {
 		return nil, err
 	}
@@ -142,13 +142,12 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		dbItr.Prev()
 	}
 
-	historyKey := dbItr.Key()
-
-	// Retrieval of key modification proceeds exactly as originally implemented
-	blockNum, tranNum, err := rangeScan.decodeBlockNumTranNum(historyKey)
+	historyVal := dbItr.Value()
+	blockNum, tranNum, err := rangeScan.decodeBlockNumTranNum(historyVal)
 	if err != nil {
 		return nil, err
 	}
+
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, key, blockNum, tranNum)
 
