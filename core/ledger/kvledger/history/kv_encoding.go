@@ -14,6 +14,7 @@ import (
 )
 
 type dataKey []byte
+type dataValue []byte
 type rangeScan struct {
     startKey, endKey []byte
 }
@@ -24,18 +25,23 @@ var (
     emptyValue      = []byte{}     // used to store as value for keys where only key needs to be stored (e.g., dataKeys)
 )
 
-// constructDataKey builds the key of the format namespace~len(key)~key~blocknum~trannum
+// constructDataKey builds the key of the format namespace~len(key)~key~versionnum
 // using an order preserving encoding so that history query results are ordered by height
 // Note: this key format is different than the format in pre-v2.0 releases and requires
 //       a historydb rebuild when upgrading an older version to v2.0.
-func constructDataKey(ns string, key string, blocknum uint64, trannum uint64) dataKey {
+func constructDataKey(ns string, key string, versionnum uint64) dataKey {
     k := append([]byte(ns), compositeKeySep...)
     k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
     k = append(k, []byte(key)...)
     k = append(k, compositeKeySep...)
-    k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
-    k = append(k, util.EncodeOrderPreservingVarUint64(trannum)...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(versionnum)...)
     return dataKey(k)
+}
+
+func constructDataValue(blocknum uint64, trannum uint64) dataValue {
+    v := append([]byte{}, util.EncodeOrderPreservingVarUint64(blocknum)...)
+    v = append(v, util.EncodeOrderPreservingVarUint64(trannum)...)
+    return dataValue(v)
 }
 
 // constructRangescanKeys returns start and endKey for performing a range scan
@@ -54,14 +60,22 @@ func constructRangeScan(ns string, key string) *rangeScan {
     }
 }
 
-func (r *rangeScan) decodeBlockNumTranNum(dataKey dataKey) (uint64, uint64, error) {
-    blockNumTranNumBytes := bytes.TrimPrefix(dataKey, r.startKey)
-    blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumTranNumBytes)
+func (r *rangeScan) decodeVersionNum(dataKey dataKey) (uint64, error) {
+	versionNum := bytes.TrimPrefix(dataKey, r.startKey)
+	versionNum, _, err := util.DecodeOrderPreservingVarUint64(versionNumBytes)
+	if err != nil {
+		return 0, err
+	}
+	return versionNum, nil
+}
+
+func (r *rangeScan) decodeBlockNumTranNum(dataValue dataValue) (uint64, uint64, error) {
+    blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataValue)
     if err != nil {
         return 0, 0, err
     }
 
-    tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumTranNumBytes[blockBytesConsumed:])
+    tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataValue[blockBytesConsumed:])
     if err != nil {
         return 0, 0, err
     }
