@@ -14,7 +14,6 @@ import (
 )
 
 type dataKey []byte
-type dataVal []byte
 type rangeScan struct {
 	startKey, endKey []byte
 }
@@ -22,6 +21,7 @@ type rangeScan struct {
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
+	emptyValue      = []byte{}     // used to store as value for keys where only key needs to be stored (e.g., dataKeys)
 )
 
 // constructDataKey builds the key of the format namespace~len(key)~key~versionnum
@@ -29,19 +29,15 @@ var (
 // Note: this key format is different than the format in pre-v2.0 releases and requires
 //
 //	a historydb rebuild when upgrading an older version to v2.0.
-func constructDataKey(ns string, key string, versionnum uint64) dataKey {
+func constructDataKey(ns string, key string, versionnum uint64, blocknum uint64, trannum uint64) dataKey {
 	k := append([]byte(ns), compositeKeySep...)
 	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
 	k = append(k, []byte(key)...)
 	k = append(k, compositeKeySep...)
 	k = append(k, util.EncodeOrderPreservingVarUint64(versionnum)...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(trannum)...)
 	return dataKey(k)
-}
-
-func constructDataVal(blocknum uint64, trannum uint64) dataVal {
-	v := append([]byte{}, util.EncodeOrderPreservingVarUint64(blocknum)...)
-	v = append(v, util.EncodeOrderPreservingVarUint64(trannum)...)
-	return dataVal(v)
 }
 
 // constructRangescanKeys returns start and endKey for performing a range scan
@@ -60,30 +56,26 @@ func constructRangeScan(ns string, key string) *rangeScan {
 	}
 }
 
-func (r *rangeScan) decodeVersionNum(dataKey dataKey) (uint64, error) {
-	versionNumBytes := bytes.TrimPrefix(dataKey, r.startKey)
-	versionNum, _, err := util.DecodeOrderPreservingVarUint64(versionNumBytes)
+func (r *rangeScan) decodeVersionBlockTran(dataKey dataKey) (uint64, uint64, uint64, error) {
+	versionBlockTranBytes := bytes.TrimPrefix(dataKey, r.startKey)
+	versionNum, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes)
 	if err != nil {
-		return 0, err
+		return 0, 0, 0, err
 	}
-	return versionNum, nil
-}
-
-func (r *rangeScan) decodeBlockNumTranNum(dataVal dataVal) (uint64, uint64, error) {
-	blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataVal)
+	blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[versionBytesConsumed:])
 	if err != nil {
 		return 0, 0, err
 	}
-
-	tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(dataVal[blockBytesConsumed:])
+	tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[blockBytesConsumed + versionBytesConsumed:])
 	if err != nil {
 		return 0, 0, err
 	}
-
 	// The following error should never happen. Keep the check just in case there is some unknown bug.
-	if blockBytesConsumed+tranBytesConsumed != len(dataVal) {
+	if versionBytesConsumed+blockBytesConsumed+tranBytesConsumed != len(versionBlockTranBytes) {
 		return 0, 0, errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumTranNumBytes (%d)",
-			blockBytesConsumed+tranBytesConsumed, len(dataVal))
+			blockBytesConsumed+tranBytesConsumed, len(versionBlockTranBytes))
 	}
-	return blockNum, tranNum, nil
+
+	return versionNum, blockNum, tranNum, nil
 }
+

@@ -60,8 +60,8 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 		return nil, nil
 	}
 
-	historyVal := scanner.dbItr.Value()
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyVal)
+	historyKey := scanner.dbItr.Key()
+	_, blockNum, tranNum, err := scanner.rangeScan.decodeVersionBlockTran(historyKey)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +142,8 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		dbItr.Prev()
 	}
 
-	historyVal := dbItr.Value()
-	blockNum, tranNum, err := rangeScan.decodeBlockNumTranNum(historyVal)
+	historyKey := scanner.dbItr.Key()
+	_, blockNum, tranNum, err := scanner.rangeScan.decodeVersionBlockTran(historyKey)
 	if err != nil {
 		return nil, err
 	}
@@ -268,18 +268,12 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	}
 
 	historyKey := scanner.dbItr.Key()
-	versionNum, err := scanner.rangeScan.decodeVersionNum(historyKey)
+	versionNum, blockNum, tranNum, err := scanner.rangeScan.decodeVersionBlockTran(historyKey)
 	if err != nil {
 		return nil, err
 	}
 	if versionNum > scanner.end {
 		return nil, nil
-	}
-
-	historyVal := scanner.dbItr.Value()
-	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyVal)
-	if err != nil {
-		return nil, err
 	}
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)

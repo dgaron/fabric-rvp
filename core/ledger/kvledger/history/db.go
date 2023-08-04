@@ -145,9 +145,8 @@ func (d *DB) Commit(block *common.Block) error {
 					versionNum++
 					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versionNum)
 
-					dataKey := constructDataKey(ns, kvWrite.Key, versionNum)
-					dataVal := constructDataVal(blockNo, tranNo)
-					dbBatch.Put(dataKey, dataVal)
+					dataKey := constructDataKey(ns, kvWrite.Key, versionNum, blockNo, tranNo)
+					dbBatch.Put(dataKey, emptyValue)
 				}
 			}
 
