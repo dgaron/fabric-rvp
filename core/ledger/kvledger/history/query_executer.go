@@ -142,8 +142,8 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		dbItr.Prev()
 	}
 
-	historyKey := scanner.dbItr.Key()
-	_, blockNum, tranNum, err := scanner.rangeScan.decodeVersionBlockTran(historyKey)
+	historyKey := dbItr.Key()
+	_, blockNum, tranNum, err := rangeScan.decodeVersionBlockTran(historyKey)
 	if err != nil {
 		return nil, err
 	}
