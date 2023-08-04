@@ -64,18 +64,17 @@ func (r *rangeScan) decodeVersionBlockTran(dataKey dataKey) (uint64, uint64, uin
 	}
 	blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[versionBytesConsumed:])
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[blockBytesConsumed + versionBytesConsumed:])
+	tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[blockBytesConsumed+versionBytesConsumed:])
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	// The following error should never happen. Keep the check just in case there is some unknown bug.
 	if versionBytesConsumed+blockBytesConsumed+tranBytesConsumed != len(versionBlockTranBytes) {
-		return 0, 0, errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumTranNumBytes (%d)",
+		return 0, 0, 0, errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumTranNumBytes (%d)",
 			blockBytesConsumed+tranBytesConsumed, len(versionBlockTranBytes))
 	}
 
 	return versionNum, blockNum, tranNum, nil
 }
-
