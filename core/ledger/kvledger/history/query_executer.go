@@ -119,23 +119,13 @@ func (scanner *historyScanner) updateBlock() error {
 	return nil
 }
 
-func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
-	return nil, nil
-}
-
-func (q *QueryExecutor) GetVersionsForKey(namespace string, key string) (commonledger.ResultsIterator, error) {
-	return nil, nil
-}
-
-/**
-
 // GetHistoryForKeys implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
 	scanners := make(map[string]*historyScanner)
 	for _, key := range keys {
 		scanners := q.GetHistoryForKey(namespace, key)
 	}
-	scanner := &parallelHistoryScanner{namespace, keys, scanners, nil, 0, nil, 0}
+	scanner := &multipleHistoryScanner{namespace, keys, scanners, nil, 0, nil, 0}
 	err := scanner.updateBlock()
 	if err != nil {
 		return nil, err
@@ -144,83 +134,45 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
-type parallelHistoryScanner struct {
+type multipleHistoryScanner struct {
 	namespace       string
 	keys            []string
 	scanners        map[string]*historyScanner
-	currentBlock uint64
-	keysInBlock     []string
 	currentKeyIndex int
 }
 
-func (scanner *parallelHistoryScanner) Next() (commonledger.QueryResult, error) {
-	// No keys in next block indicates we've exhausted the iterators
-	if len(scanner.keysInBlock) == 0 {
-		return nil, nil
-	}
-
+func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) {
 	key := scanner.keysInBlock[scanner.currentKeyIndex]
-
-	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
-		scanner.namespace, key, blockNum, tranNum)
 
 	queryResult, err := scanner.scanners[key].Next()
 	if err != nil {
 		return nil, err
 	}
+
 	if queryResult == nil {
-		// should not happen, but make sure there is inconsistency between historydb and statedb
-		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, key, blockNum, tranNum)
-		return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, key, blockNum, tranNum)
-	}
-	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
-		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
+		scanner.currentKeyIndex--
+		if scanner.currentKeyIndex <= -1 {
+			return nil, nil
+		}
 
-	logger.Debugf("Completed scanner.Next(), updating position trackers: tranNum: %v, txIndex: %v, keyIndex: %v", scanner.keyMap[key].transactions[scanner.keyMap[key].txIndex], scanner.keyMap[key].txIndex, scanner.currentKeyIndex)
+		key := scanner.keysInBlock[scanner.currentKeyIndex]
 
-	keyData := scanner.keyMap[key]
-	keyData.txIndex--
-	scanner.keyMap[key] = keyData
-	// Update position trackers
-	if scanner.keyMap[key].txIndex <= -1 {
-		scanner.keyMap[key].dbItr.Prev()
-		scanner.currentKeyIndex++
-		if scanner.currentKeyIndex >= len(scanner.keysInBlock) {
-			err := scanner.nextBlock()
-			if err != nil {
-				return nil, nil
-			}
+		queryResult, err = scanner.scanners[key].Next()
+		if err != nil {
+			return nil, err
 		}
 	}
+
+	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
+		scanner.namespace, key, queryResult.(*queryresult.KeyModification).TxId)
 
 	return queryResult, nil
 }
 
-func (scanner *parallelHistoryScanner) Close() {
+func (scanner *multipleHistoryScanner) Close() {
 	for _, key := range scanner.keys {
-		scanner.keyMap[key].dbItr.Release()
+		scanner.scanners[key].dbItr.Release()
 	}
-}
-
-func (scanner *parallelHistoryScanner) updateBlock() error {
-	scanner.currentBlockNum = 0
-	for _, key := range scanner.keys {
-		blockNum := scanner.scanners.currentBlock
-		if blockNum > scanner.currentBlockNum {
-			scanner.currentBlock = blockNum
-			scanner.keysInBlock = append([]string{}, key)
-		} else if blockNum == scanner.currentBlockNum {
-			scanner.keysInBlock = append(scanner.keysInBlock, key)
-		}
-
-
-
-
-
-	}
-
-	logger.Debugf("Completed scanner.nextBlock: currentBlock: %v, keyIndex: %v, keysInBlock: %v", scanner.currentBlockNum, scanner.currentKeyIndex, scanner.keysInBlock)
-	return nil
 }
 
 // getTxIDandKeyWriteValueFromTran inspects a transaction for writes to a given key
@@ -277,12 +229,17 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 	return nil, nil
 }
 
+func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
+	return nil, nil
+}
+
+/**
+
 type versionScanner struct {
 	namespace    string
 	key          string
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
-	currentBlock *common.Block
 	numVersions  uint64
 	transactions []uint64
 	txIndex      int
@@ -295,12 +252,11 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
 
-	rangeScan := constructRangeScan(namespace, 0, key)
-	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
+	dbItr, err := q.levelDB.GetIterator(nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	scanner := &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, 0, nil, 0, start, end}
+	scanner := &versionScanner{namespace, key, dbItr, q.blockStore, nil, 0, nil, 0, start, end}
 	// Find first block containing first version in range
 	for {
 		if !scanner.dbItr.Next() {
@@ -386,15 +342,5 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 
 func (scanner *versionScanner) Close() {
 	scanner.dbItr.Release()
-}
-
-func (scanner *versionScanner) updateBlock() error {
-	historyKey := scanner.dbItr.Key()
-	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
-	if err != nil {
-		return err
-	}
-	scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
-	return err
 }
 **/
