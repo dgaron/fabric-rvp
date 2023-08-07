@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	"bytes"
-
 	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/pkg/errors"
 )
@@ -92,4 +90,3 @@ func constructDataKey(ns string, blocknum uint64, key string) dataKey {
 	k = append(k, []byte(key)...)
 	return dataKey(k)
 }
-

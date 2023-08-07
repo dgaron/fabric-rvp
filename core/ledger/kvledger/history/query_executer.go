@@ -20,8 +20,8 @@ import (
 
 // QueryExecutor is a query executor against the LevelDB history DB
 type QueryExecutor struct {
-	levelDB    *leveldbhelper.DBHandle
-	blockStore *blkstorage.BlockStore
+	levelDB     *leveldbhelper.DBHandle
+	blockStore  *blkstorage.BlockStore
 	globalIndex map[string][]byte
 }
 
@@ -32,16 +32,21 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 		return nil, err
 	}
 
-	blockNum, present := q.globalIndex[key]
+	globalIndexBytes, present := q.globalIndex[key]
 	if !present {
 		// This scanner will return nil upon first call to Next()
 		return &historyScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1}, nil
 	}
 
-	dataKey := constructDataKey(namespace, blockNum, key)
-	scanner.dbItr.Seek(dataKey)
+	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
+	if err != nil {
+		return nil, err
+	}
 
-	indexVal := scanner.dbItr.Value()
+	dataKey := constructDataKey(namespace, blockNum, key)
+	dbItr.Seek(dataKey)
+
+	indexVal := dbItr.Value()
 	prev, _, transactions, err := decodeNewIndex(indexVal)
 	if err != nil {
 		return nil, err
@@ -54,14 +59,14 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 
 // historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
-	namespace    string
-	key          string
-	dbItr        iterator.Iterator
-	blockStore   *blkstorage.BlockStore
-	currentBlock uint64
-	previousBlock	uint64
-	transactions []uint64
-	txIndex      int
+	namespace     string
+	key           string
+	dbItr         iterator.Iterator
+	blockStore    *blkstorage.BlockStore
+	currentBlock  uint64
+	previousBlock uint64
+	transactions  []uint64
+	txIndex       int
 }
 
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
@@ -113,7 +118,7 @@ func (scanner *historyScanner) updateBlock() error {
 	if err != nil {
 		return err
 	}
-	scanner.previousBlock = prev 
+	scanner.previousBlock = prev
 	scanner.transactions = transactions
 	scanner.txIndex = len(transactions) - 1
 	return nil
@@ -123,13 +128,17 @@ func (scanner *historyScanner) updateBlock() error {
 func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error) {
 	scanners := make(map[string]*historyScanner)
 	for _, key := range keys {
-		scanners := q.GetHistoryForKey(namespace, key)
+		scanner, err := q.GetHistoryForKey(namespace, key)
+		if err != nil {
+			return nil, err
+		}
+		var ok bool
+		scanners[key], ok = scanner.(*historyScanner)
+		if !ok {
+			return nil, errors.Errorf("Error converting commonledger.ResultsIterator to historyScanner")
+		}
 	}
-	scanner := &multipleHistoryScanner{namespace, keys, scanners, nil, 0, nil, 0}
-	err := scanner.updateBlock()
-	if err != nil {
-		return nil, err
-	}
+	scanner := &multipleHistoryScanner{namespace, keys, scanners, 0}
 	return scanner, nil
 }
 
@@ -142,7 +151,7 @@ type multipleHistoryScanner struct {
 }
 
 func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) {
-	key := scanner.keysInBlock[scanner.currentKeyIndex]
+	key := scanner.keys[scanner.currentKeyIndex]
 
 	queryResult, err := scanner.scanners[key].Next()
 	if err != nil {
@@ -150,12 +159,12 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 	}
 
 	if queryResult == nil {
-		scanner.currentKeyIndex--
-		if scanner.currentKeyIndex <= -1 {
+		scanner.currentKeyIndex++
+		if scanner.currentKeyIndex >= len(scanner.keys) {
 			return nil, nil
 		}
 
-		key := scanner.keysInBlock[scanner.currentKeyIndex]
+		key := scanner.keys[scanner.currentKeyIndex]
 
 		queryResult, err = scanner.scanners[key].Next()
 		if err != nil {
