@@ -34,6 +34,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 
 	globalIndexBytes, present := q.globalIndex[key]
 	if !present {
+		logger.Debugf("Key not present in GI: %v. Initialized nil history scanner for key %s.", present, key)
 		// This scanner will return nil upon first call to Next()
 		return &historyScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1}, nil
 	}
@@ -44,7 +45,10 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	}
 
 	dataKey := constructDataKey(namespace, blockNum, key)
-	dbItr.Seek(dataKey)
+	found := dbItr.Seek(dataKey)
+	if !found {
+		return nil, errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", key, blockNum)
+	}
 
 	indexVal := dbItr.Value()
 	prev, _, transactions, err := decodeNewIndex(indexVal)
@@ -53,6 +57,8 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	}
 
 	txIndex := len(transactions) - 1
+
+	logger.Debugf("Initialized history scanner for key %s, currentBlock: %d, previousBlock: %d", key, blockNum, prev)
 
 	return &historyScanner{namespace, key, dbItr, q.blockStore, blockNum, prev, transactions, txIndex}, nil
 }
@@ -110,9 +116,13 @@ func (scanner *historyScanner) Close() {
 }
 
 func (scanner *historyScanner) updateBlock() error {
+	logger.Debugf("Updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, scanner.previousBlock)
 	scanner.currentBlock = scanner.previousBlock
 	dataKey := constructDataKey(scanner.namespace, scanner.previousBlock, scanner.key)
-	scanner.dbItr.Seek(dataKey)
+	found := scanner.dbItr.Seek(dataKey)
+	if !found {
+		return errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", scanner.key, scanner.previousBlock)
+	}
 	indexVal := scanner.dbItr.Value()
 	prev, _, transactions, err := decodeNewIndex(indexVal)
 	if err != nil {
@@ -121,6 +131,7 @@ func (scanner *historyScanner) updateBlock() error {
 	scanner.previousBlock = prev
 	scanner.transactions = transactions
 	scanner.txIndex = len(transactions) - 1
+	logger.Debugf("Fished updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, scanner.previousBlock)
 	return nil
 }
 

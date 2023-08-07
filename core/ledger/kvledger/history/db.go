@@ -162,7 +162,7 @@ func (d *DB) Commit(block *common.Block) error {
 					transactions = append(transactions, tranNo)
 					numVersions++
 
-					d.globalIndex[kvWrite.Key] = constructGlobalIndex(prev, numVersions)
+					d.globalIndex[kvWrite.Key] = constructGlobalIndex(blockNo, numVersions)
 
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
