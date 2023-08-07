@@ -167,7 +167,7 @@ func (d *DB) Commit(block *common.Block) error {
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
 
-					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
+					dataKey := constructDataKey(ns, blockNo, kvWrite.Key)
 					dbBatch.Put(dataKey, indexVal)
 				}
 			}
@@ -194,7 +194,7 @@ func (d *DB) Commit(block *common.Block) error {
 
 // NewQueryExecutor implements method in HistoryDB interface
 func (d *DB) NewQueryExecutor(blockStore *blkstorage.BlockStore) (ledger.HistoryQueryExecutor, error) {
-	return &QueryExecutor{d.levelDB, blockStore}, nil
+	return &QueryExecutor{d.levelDB, blockStore, d.globalIndex}, nil
 }
 
 // GetLastSavepoint implements returns the height till which the history is present in the db

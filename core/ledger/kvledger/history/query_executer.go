@@ -22,33 +22,39 @@ import (
 type QueryExecutor struct {
 	levelDB    *leveldbhelper.DBHandle
 	blockStore *blkstorage.BlockStore
+	globalIndex map[string][]byte
 }
 
 // GetHistoryForKey implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonledger.ResultsIterator, error) {
-	rangeScan := constructRangeScan(namespace, key)
-	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
+	blockNum := q.globalIndex[key]
+	dbItr, err := q.levelDB.GetIterator(nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// By default, dbItr is in the orderer of oldest to newest and its cursor is at the beginning of the entries.
-	// Need to call Last() and Next() to move the cursor to the end of the entries so that we can iterate
-	// the entries in the order of newest to oldest.
-	if dbItr.Last() {
-		dbItr.Next()
+	dataKey := constructDataKey(namespace, blockNum, key)
+	scanner.dbItr.Seek(dataKey)
+
+	indexVal := scanner.dbItr.Value()
+	prev, _, transactions, err := decodeNewIndex(indexVal)
+	if err != nil {
+		return nil, err
 	}
-	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, nil, nil, -1}, nil
+
+	txIndex := len(transactions) - 1
+
+	return &historyScanner{namespace, key, dbItr, q.blockStore, blockNum, prev, transactions, txIndex}, nil
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
 type historyScanner struct {
-	rangeScan    *rangeScan
 	namespace    string
 	key          string
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
-	currentBlock *common.Block
+	currentBlock uint64
+	previousBlock	uint64
 	transactions []uint64
 	txIndex      int
 }
@@ -57,39 +63,22 @@ type historyScanner struct {
 // It decodes blockNumTranNumBytes to get blockNum and tranNum,
 // loads the block:tran from block storage, finds the key and returns the result.
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
-	// call Prev because history query result is returned from newest to oldest
-	if scanner.txIndex <= -1 && !scanner.dbItr.Prev() {
-		return nil, nil
+	if scanner.txIndex <= -1 {
+		if scanner.currentBlock == scanner.previousBlock {
+			return nil, nil
+		}
+		scanner.updateBlock()
 	}
 
-	historyKey := scanner.dbItr.Key()
-	blockNum, err := scanner.rangeScan.decodeBlockNum(historyKey)
-	if err != nil {
-		return nil, err
-	}
-	if scanner.txIndex <= -1 {
-		// Retrieve new block
-		scanner.currentBlock, err = scanner.blockStore.RetrieveBlockByNumber(blockNum)
-		if err != nil {
-			return nil, err
-		}
-		indexVal := scanner.dbItr.Value()
-		_, _, scanner.transactions, err = decodeNewIndex(indexVal)
-		if err != nil {
-			return nil, err
-		}
-		scanner.txIndex = len(scanner.transactions) - 1
-	}
+	blockNum := scanner.currentBlock
 	tranNum := scanner.transactions[scanner.txIndex]
 	scanner.txIndex--
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
-	// Index into stored block & get the tranEnvelope
-	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
 	// Get the transaction from block storage that is associated with this history record
-	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
+	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +100,21 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 
 func (scanner *historyScanner) Close() {
 	scanner.dbItr.Release()
+}
+
+func (scanner *historyScanner) updateBlock() error {
+	scanner.currentBlock = scanner.previousBlock
+	dataKey := constructDataKey(scanner.namespace, scanner.previousBlock, scanner.key)
+	scanner.dbItr.Seek(dataKey)
+	indexVal := scanner.dbItr.Value()
+	prev, _, transactions, err := decodeNewIndex(indexVal)
+	if err != nil {
+		return err
+	}
+	scanner.previousBlock = prev 
+	scanner.transactions = transactions
+	scanner.txIndex = len(transactions) - 1
+	return nil
 }
 
 // GetHistoryForKeys implements method in interface `ledger.HistoryQueryExecutor`
@@ -135,7 +139,6 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 }
 
 type keyData struct {
-	rangeScan    *rangeScan
 	dbItr        iterator.Iterator
 	transactions []uint64
 	txIndex      int
@@ -312,7 +315,6 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 }
 
 type versionScanner struct {
-	rangeScan    *rangeScan
 	namespace    string
 	key          string
 	dbItr        iterator.Iterator
@@ -330,7 +332,7 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
 
-	rangeScan := constructRangeScan(namespace, key)
+	rangeScan := constructRangeScan(namespace, 0, key)
 	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
 		return nil, err
