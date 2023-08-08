@@ -34,7 +34,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 
 	globalIndexBytes, present := q.globalIndex[key]
 	if !present {
-		logger.Debugf("Key not present in GI: %v. Initialized nil history scanner for key %s.", present, key)
+		logger.Debugf("Key not present in GI. Initialized nil history scanner for key %s.", key)
 		// This scanner will return nil upon first call to Next()
 		return &historyScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1}, nil
 	}
@@ -250,24 +250,6 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 }
 
 func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
-	return nil, nil
-}
-
-/**
-
-type versionScanner struct {
-	namespace    string
-	key          string
-	dbItr        iterator.Iterator
-	blockStore   *blkstorage.BlockStore
-	numVersions  uint64
-	transactions []uint64
-	txIndex      int
-	start        uint64
-	end          uint64
-}
-
-func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
 	if end < start {
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
@@ -276,68 +258,104 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	if err != nil {
 		return nil, err
 	}
-	scanner := &versionScanner{namespace, key, dbItr, q.blockStore, nil, 0, nil, 0, start, end}
-	// Find first block containing first version in range
+
+	globalIndexBytes, present := q.globalIndex[key]
+	if !present {
+		logger.Debugf("Key not present in GI. Initialized nil version scanner for key %s.", key)
+		// This scanner will return nil upon first call to Next()
+		return &versionScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1, start, end}, nil
+	}
+
+	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	dataKey := constructDataKey(namespace, blockNum, key)
+	found := dbItr.Seek(dataKey)
+	if !found {
+		return nil, errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", key, blockNum)
+	}
+
+	indexVal := dbItr.Value()
+	prev, _, transactions, err := decodeNewIndex(indexVal)
+	if err != nil {
+		return nil, err
+	}
+
+	txIndex := len(transactions) - 1
+
+	logger.Debugf("Initialized version scanner for key %s, currentBlock: %d, previousBlock: %d", key, blockNum, prev)
+
+	scanner := &versionScanner{namespace, key, dbItr, q.blockStore, blockNum, indexVal, txIndex, start, end}
+	// Find first block containing end version in range
 	for {
-		if !scanner.dbItr.Next() {
-			// Iterator exhausted, first version in range > last actual version of key
-			// This ensures first call to Next() returns nil result
-			if scanner.transactions != nil {
-				scanner.txIndex = len(scanner.transactions)
+		prev, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+		if scanner.txIndex == -1 {
+			if scanner.currentBlock == prev {
+				// Iterator exhausted
+				return scanner, nil
 			}
-			return scanner, nil
-		}
-		indexVal := scanner.dbItr.Value()
-		_, scanner.numVersions, scanner.transactions, err = decodeNewIndex(indexVal)
-		if err != nil {
-			return nil, err
-		}
-		if scanner.numVersions >= scanner.start {
-
-			firstVersionInBlock := scanner.numVersions - uint64(len(scanner.transactions)) + 1
-			firstIndex := scanner.start - firstVersionInBlock
-			scanner.txIndex = int(firstIndex)
-
-			if err = scanner.updateBlock(); err != nil {
+			scanner.updateBlock()
+			prev, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
+			if err != nil {
 				return nil, err
 			}
+		}
+
+		firstVersionInBlock := numVersions - uint64(len(scanner.transactions)) + 1
+		if firstVersionInBlock <= scanner.end {
+			scanner.txIndex := scanner.end - firstVersionInBlock
 			return scanner, nil
 		}
 	}
 }
 
+type versionScanner struct {
+	namespace    string
+	key          string
+	dbItr        iterator.Iterator
+	blockStore   *blkstorage.BlockStore
+	currentBlock uint64
+	indexVal     newIndex
+	txIndex      int
+	start        uint64
+	end          uint64
+}
+
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-	if scanner.txIndex == len(scanner.transactions) {
-		// Returned all the transactions from the block, fetch new block & update indices
-		if !scanner.dbItr.Next() {
-			// Iterator exhausted, last version in range already found
+	prev, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+	if err != nil {
+		return nil, err
+	}
+	if scanner.txIndex == -1 {
+		if scanner.currentBlock == prev {
+			// Iterator exhausted
 			return nil, nil
 		}
-		indexVal := scanner.dbItr.Value()
-		var err error
-		_, scanner.numVersions, scanner.transactions, err = decodeNewIndex(indexVal)
+		scanner.updateBlock()
+		prev, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
 		if err != nil {
 			return nil, err
 		}
-		if err = scanner.updateBlock(); err != nil {
-			return nil, err
-		}
-		scanner.txIndex = 0
 	}
 
 	firstVersionInBlock := scanner.numVersions - uint64(len(scanner.transactions)) + 1
 	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
-	if currentVersionNum > scanner.end {
-		logger.Debugf("End version %d found for key: %s", scanner.end, scanner.key)
+	if currentVersionNum < scanner.start {
+		logger.Debugf("First requested version %d found for key: %s", scanner.end, scanner.key)
 		return nil, nil
 	}
 
+	blockNum := scanner.currentBlock
 	tranNum := scanner.transactions[scanner.txIndex]
+	scanner.txIndex--
 
-	// Index into stored block & get the tranEnvelope
-	txEnvelopeBytes := scanner.currentBlock.Data.Data[tranNum]
+	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
+		scanner.namespace, scanner.key, blockNum, tranNum)
+
 	// Get the transaction from block storage that is associated with this history record
-	tranEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
+	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
 		return nil, err
 	}
@@ -349,18 +367,35 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	}
 	if queryResult == nil {
 		// should not happen, but make sure there is inconsistency between historydb and statedb
-		logger.Errorf("Version %d not found for key %s for namespace:%s", currentVersionNum, scanner.key, scanner.namespace)
-		return nil, errors.Errorf("Version %d not found for key %s for namespace:%s", currentVersionNum, scanner.key, scanner.namespace)
+		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.key, blockNum, tranNum)
+		return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.key, blockNum, tranNum)
 	}
-
-	scanner.txIndex++
-
 	logger.Debugf("Found key version %d for namespace:%s key:%s from transaction %s", currentVersionNum, scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
 	return queryResult, nil
-
 }
 
 func (scanner *versionScanner) Close() {
 	scanner.dbItr.Release()
 }
-**/
+
+func (scanner *versionScanner) updateBlock() error {
+	prev, _, transactions, err := decodeNewIndex(scanner.indexVal)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debugf("Updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, prev)
+	scanner.currentBlock = prev
+	dataKey := constructDataKey(scanner.namespace, prev, scanner.key)
+	found := scanner.dbItr.Seek(dataKey)
+	if !found {
+		return errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", scanner.key, prev)
+	}
+	scanner.indexVal := scanner.dbItr.Value()
+	_, _, transactions, err := decodeNewIndex(scanner.indexVal)
+	if err != nil {
+		return err
+	}
+	scanner.txIndex = len(transactions) - 1
+	logger.Debugf("Fished updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, prev)
+	return nil
+}
