@@ -169,7 +169,7 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 		return nil, err
 	}
 
-	if queryResult == nil {
+	for queryResult == nil {
 		scanner.currentKeyIndex++
 		if scanner.currentKeyIndex >= len(scanner.keys) {
 			return nil, nil
