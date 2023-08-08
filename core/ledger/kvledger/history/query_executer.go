@@ -332,15 +332,15 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 		return nil, nil
 	}
 	if scanner.txIndex == -1 {
+		oldBlockNum := scanner.currentBlock
 		scanner.updateBlock()
-		var prev uint64
-		prev, _, transactions, err = decodeNewIndex(scanner.indexVal)
-		if err != nil {
-			return nil, err
-		}
-		if scanner.currentBlock == prev {
+		if scanner.currentBlock == oldBlockNum {
 			// Iterator exhausted
 			return nil, nil
+		}
+		_, _, transactions, err = decodeNewIndex(scanner.indexVal)
+		if err != nil {
+			return nil, err
 		}
 	}
 
