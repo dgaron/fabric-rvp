@@ -300,7 +300,11 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		}
 		firstVersionInBlock := numVersions - uint64(len(transactions)) + 1
 		if firstVersionInBlock <= scanner.end {
-			scanner.txIndex = int(scanner.end - firstVersionInBlock)
+			if numVersions >= scanner.end {
+				scanner.txIndex = int(scanner.end - firstVersionInBlock)
+			} else {
+				scanner.txIndex = len(transactions) - 1
+			}
 			return scanner, nil
 		}
 
