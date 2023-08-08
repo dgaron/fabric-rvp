@@ -290,25 +290,22 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	scanner := &versionScanner{namespace, key, dbItr, q.blockStore, blockNum, indexVal, txIndex, start, end}
 	// Find first block containing end version in range
 	for {
-		prev, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+		_, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
 		if err != nil {
 			return nil, err
 		}
-		if scanner.txIndex == -1 {
-			if scanner.currentBlock == prev {
-				// Iterator exhausted
-				return scanner, nil
-			}
-			scanner.updateBlock()
-			_, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		firstVersionInBlock := numVersions - uint64(len(transactions)) + 1
 		if firstVersionInBlock <= scanner.end {
 			scanner.txIndex = int(scanner.end - firstVersionInBlock)
+			return scanner, nil
+		}
+		scanner.updateBlock()
+		prev, _, _, err = decodeNewIndex(scanner.indexVal)
+		if err != nil {
+			return nil, err
+		}
+		if scanner.currentBlock == prev {
+			// Iterator exhausted
 			return scanner, nil
 		}
 	}
@@ -327,26 +324,26 @@ type versionScanner struct {
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-	prev, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+
+	_, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return nil, err
 	}
-	if scanner.txIndex == -1 {
-		if scanner.currentBlock == prev {
-			// Iterator exhausted
-			return nil, nil
-		}
-		scanner.updateBlock()
-		_, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	firstVersionInBlock := numVersions - uint64(len(transactions)) + 1
 	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
 	if currentVersionNum < scanner.start {
-		logger.Debugf("First requested version %d found for key: %s", scanner.end, scanner.key)
+		logger.Debugf("First requested version %d found for key: %s", scanner.start, scanner.key)
+		return nil, nil
+	}
+	if scanner.txIndex == -1 {
+		scanner.updateBlock()
+	}
+	prev, _, transactions err = decodeNewIndex(scanner.indexVal)
+	if err != nil {
+		return nil, err
+	}
+	if scanner.currentBlock == prev {
+		// Iterator exhausted
 		return nil, nil
 	}
 
