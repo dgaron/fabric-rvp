@@ -303,7 +303,14 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 			scanner.txIndex = int(scanner.end - firstVersionInBlock)
 			return scanner, nil
 		}
+
+		oldBlockNum := scanner.currentBlock
 		scanner.updateBlock()
+		if scanner.currentBlock == oldBlockNum {
+			// Iterator exhausted
+			scanner.txIndex = -1
+			return scanner, nil
+		}
 	}
 }
 
