@@ -304,10 +304,6 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 			return scanner, nil
 		}
 		scanner.updateBlock()
-		prev, _, _, err = decodeNewIndex(scanner.indexVal)
-		if err != nil {
-			return nil, err
-		}
 	}
 }
 
