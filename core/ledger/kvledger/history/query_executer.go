@@ -304,10 +304,6 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		if err != nil {
 			return nil, err
 		}
-		if scanner.currentBlock == prev {
-			// Iterator exhausted
-			return scanner, nil
-		}
 	}
 }
 
