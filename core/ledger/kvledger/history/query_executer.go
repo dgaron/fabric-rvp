@@ -325,7 +325,7 @@ type versionScanner struct {
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 
-	_, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+	prev, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +338,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if scanner.txIndex == -1 {
 		scanner.updateBlock()
 	}
-	prev, _, transactions err = decodeNewIndex(scanner.indexVal)
+	prev, _, transactions, err = decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return nil, err
 	}
