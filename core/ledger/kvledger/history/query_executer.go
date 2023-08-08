@@ -263,7 +263,7 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	if !present {
 		logger.Debugf("Key not present in GI. Initialized nil version scanner for key %s.", key)
 		// This scanner will return nil upon first call to Next()
-		return &versionScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1, start, end}, nil
+		return &versionScanner{namespace, key, dbItr, q.blockStore, 0, nil, -1, start, end}, nil
 	}
 
 	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
@@ -291,21 +291,24 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	// Find first block containing end version in range
 	for {
 		prev, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+		if err != nil {
+			return nil, err
+		}
 		if scanner.txIndex == -1 {
 			if scanner.currentBlock == prev {
 				// Iterator exhausted
 				return scanner, nil
 			}
 			scanner.updateBlock()
-			prev, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
+			_, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		firstVersionInBlock := numVersions - uint64(len(scanner.transactions)) + 1
+		firstVersionInBlock := numVersions - uint64(len(transactions)) + 1
 		if firstVersionInBlock <= scanner.end {
-			scanner.txIndex := scanner.end - firstVersionInBlock
+			scanner.txIndex = int(scanner.end - firstVersionInBlock)
 			return scanner, nil
 		}
 	}
@@ -334,13 +337,13 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 			return nil, nil
 		}
 		scanner.updateBlock()
-		prev, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
+		_, numVersions, transactions, err = decodeNewIndex(scanner.indexVal)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	firstVersionInBlock := scanner.numVersions - uint64(len(scanner.transactions)) + 1
+	firstVersionInBlock := numVersions - uint64(len(transactions)) + 1
 	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
 	if currentVersionNum < scanner.start {
 		logger.Debugf("First requested version %d found for key: %s", scanner.end, scanner.key)
@@ -348,7 +351,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	}
 
 	blockNum := scanner.currentBlock
-	tranNum := scanner.transactions[scanner.txIndex]
+	tranNum := transactions[scanner.txIndex]
 	scanner.txIndex--
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
@@ -379,9 +382,9 @@ func (scanner *versionScanner) Close() {
 }
 
 func (scanner *versionScanner) updateBlock() error {
-	prev, _, transactions, err := decodeNewIndex(scanner.indexVal)
+	prev, _, _, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	logger.Debugf("Updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, prev)
 	scanner.currentBlock = prev
@@ -390,7 +393,7 @@ func (scanner *versionScanner) updateBlock() error {
 	if !found {
 		return errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", scanner.key, prev)
 	}
-	scanner.indexVal := scanner.dbItr.Value()
+	scanner.indexVal = scanner.dbItr.Value()
 	_, _, transactions, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return err
