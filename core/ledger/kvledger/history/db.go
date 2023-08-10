@@ -98,6 +98,8 @@ func (d *DB) Commit(block *common.Block) error {
 	dataKeys := make(map[string]newIndex)
 
 	historyMap := make(map[string]HistoryValue)
+	// Create a new map for the global index.
+	globalIndexMap := make(map[string]map[string]uint64)
 
 	// Read existing data
 	filePath := "/var/PeerStorage/historyData.json"
@@ -108,6 +110,19 @@ func (d *DB) Commit(block *common.Block) error {
 		}
 
 		err = json.Unmarshal(file, &historyMap)
+		if err != nil {
+			return err
+		}
+	}
+
+	globalIndexPath := "/var/PeerStorage/globalIndexData.json"
+	if _, err := os.Stat(globalIndexPath); err == nil {
+		globalIndexFile, err := ioutil.ReadFile(globalIndexPath)
+		if err != nil {
+			return err
+		}
+
+		err = json.Unmarshal(globalIndexFile, &globalIndexMap)
 		if err != nil {
 			return err
 		}
@@ -195,6 +210,13 @@ func (d *DB) Commit(block *common.Block) error {
 						Transactions: transactions,
 					}
 
+					// Update the globalIndexMap
+					if _, ok := globalIndexMap[kvWrite.Key]; !ok {
+						globalIndexMap[kvWrite.Key] = make(map[string]uint64)
+					}
+					globalIndexMap[kvWrite.Key]["prev"] = prev
+					globalIndexMap[kvWrite.Key]["num_versions"] = numVersions
+
 					d.globalIndex[kvWrite.Key] = constructGlobalIndex(prev, numVersions)
 
 					indexVal := constructNewIndex(prev, numVersions, transactions)
@@ -223,6 +245,10 @@ func (d *DB) Commit(block *common.Block) error {
 
 	file, _ := json.MarshalIndent(historyMap, "", " ")
 	_ = ioutil.WriteFile(filePath, file, 0644)
+
+	// Serialize the globalIndexMap to a new JSON file
+	globalIndexFile, _ := json.MarshalIndent(globalIndexMap, "", " ")
+	_ = ioutil.WriteFile(globalIndexPath, globalIndexFile, 0644)
 
 	logger.Debugf("Channel [%s]: Updates committed to history database for blockNo [%v]", d.name, blockNo)
 	return nil
