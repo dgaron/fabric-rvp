@@ -81,12 +81,6 @@ type DB struct {
 	globalIndex map[string][]byte
 }
 
-type HistoryValue struct {
-	Prev         uint64   `json:"prev"`
-	NumVersions  uint64   `json:"num_versions"`
-	Transactions []uint64 `json:"transactions"`
-}
-
 // Commit implements method in HistoryDB interface
 func (d *DB) Commit(block *common.Block) error {
 
@@ -97,9 +91,8 @@ func (d *DB) Commit(block *common.Block) error {
 	dbBatch := d.levelDB.NewUpdateBatch()
 	dataKeys := make(map[string]newIndex)
 
-	historyMap := make(map[string]HistoryValue)
-	// Create a new map for the global index.
-	globalIndexMap := make(map[string]map[string]uint64)
+	historyMap := make(map[string][]byte)
+	globalIndexMap := make(map[string][]byte)
 
 	// Read existing data
 	filePath := "/var/PeerStorage/historyData.json"
@@ -203,24 +196,15 @@ func (d *DB) Commit(block *common.Block) error {
 					transactions = append(transactions, tranNo)
 					numVersions++
 
-					key := fmt.Sprintf("%s_%s_%d", ns, kvWrite.Key, blockNo)
-					historyMap[key] = HistoryValue{
-						Prev:         prev,
-						NumVersions:  numVersions,
-						Transactions: transactions,
-					}
-
-					// Update the globalIndexMap
-					if _, ok := globalIndexMap[kvWrite.Key]; !ok {
-						globalIndexMap[kvWrite.Key] = make(map[string]uint64)
-					}
-					globalIndexMap[kvWrite.Key]["prev"] = prev
-					globalIndexMap[kvWrite.Key]["num_versions"] = numVersions
-
-					d.globalIndex[kvWrite.Key] = constructGlobalIndex(prev, numVersions)
+					globalIndexVal := constructGlobalIndex(prev, numVersions)
+					globalIndexMap[kvWrite.Key] = globalIndexVal
+					d.globalIndex[kvWrite.Key] = globalIndexVal
 
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
+
+					key := fmt.Sprintf("%s_%s_%d", ns, kvWrite.Key, blockNo)
+					historyMap[key] = indexVal
 
 					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
@@ -246,7 +230,6 @@ func (d *DB) Commit(block *common.Block) error {
 	file, _ := json.MarshalIndent(historyMap, "", " ")
 	_ = ioutil.WriteFile(filePath, file, 0644)
 
-	// Serialize the globalIndexMap to a new JSON file
 	globalIndexFile, _ := json.MarshalIndent(globalIndexMap, "", " ")
 	_ = ioutil.WriteFile(globalIndexPath, globalIndexFile, 0644)
 
