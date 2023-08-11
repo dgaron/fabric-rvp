@@ -433,18 +433,12 @@ func (s *ChaincodeStub) GetHistoryForKey(key string) (HistoryQueryIteratorInterf
 	return &HistoryQueryIterator{CommonIterator: &CommonIterator{s.handler, s.ChannelID, s.TxID, response, 0}}, nil
 }
 
-func (s *ChaincodeStub) GetHistoryForKeys(keys []string) ([]HistoryQueryIteratorInterface, error) {
-	var historyQueryIterators []HistoryQueryIteratorInterface
-	for _, key := range keys {
-		response, err := s.handler.handleGetHistoryForKey(key, s.ChannelID, s.TxID)
-		if err != nil {
-			return nil, err
-		}
-		iterator := &HistoryQueryIterator{CommonIterator: &CommonIterator{s.handler, s.ChannelID, s.TxID, response, 0}}
-		historyQueryIterators = append(historyQueryIterators, iterator)
+func (s *ChaincodeStub) GetHistoryForKeys(keys []string) (HistoryQueryIteratorInterface, error) {
+	response, err := s.handler.handleGetHistoryForKeys(keys, s.ChannelID, s.TxID)
+	if err != nil {
+		return nil, err
 	}
-
-	return historyQueryIterators, nil
+	return &HistoryQueryIterator{CommonIterator: &CommonIterator{s.handler, s.ChannelID, s.TxID, response, 0}}, nil
 }
 
 // CreateCompositeKey documentation can be found in interfaces.go

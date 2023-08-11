@@ -81,12 +81,6 @@ type DB struct {
 	globalIndex map[string][]byte
 }
 
-type HistoryValue struct {
-	Prev         uint64   `json:"prev"`
-	NumVersions  uint64   `json:"num_versions"`
-	Transactions []uint64 `json:"transactions"`
-}
-
 // Commit implements method in HistoryDB interface
 func (d *DB) Commit(block *common.Block) error {
 
@@ -97,7 +91,7 @@ func (d *DB) Commit(block *common.Block) error {
 	dbBatch := d.levelDB.NewUpdateBatch()
 	dataKeys := make(map[string]newIndex)
 
-	historyMap := make(map[string]HistoryValue)
+	historyMap := make(map[string]string)
 
 	// Read existing data
 	filePath := "/var/PeerStorage/historyData.json"
@@ -189,11 +183,7 @@ func (d *DB) Commit(block *common.Block) error {
 					numVersions++
 
 					key := fmt.Sprintf("%s_%s_%d", ns, kvWrite.Key, blockNo)
-					historyMap[key] = HistoryValue{
-						Prev:         prev,
-						NumVersions:  numVersions,
-						Transactions: transactions,
-					}
+					historyMap[key] = string(kvWrite.Value)
 
 					d.globalIndex[kvWrite.Key] = constructGlobalIndex(prev, numVersions)
 
