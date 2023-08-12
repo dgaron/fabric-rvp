@@ -47,7 +47,7 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 
 	dataKey := constructDataKey(namespace, blockNum, key, 0, 0, nil)
 	dbItr.Seek(dataKey)
-	dbItr.Next()
+	// dbItr.Next()
 
 	// Now we must read the actual key value
 	indexVal := dbItr.Key()
@@ -121,7 +121,7 @@ func (scanner *historyScanner) updateBlock() error {
 	scanner.currentBlock = scanner.previousBlock
 	dataKey := constructDataKey(scanner.namespace, scanner.previousBlock, scanner.key, 0, 0, nil)
 	scanner.dbItr.Seek(dataKey)
-	scanner.dbItr.Next()
+	//scanner.dbItr.Next()
 
 	indexVal := scanner.dbItr.Key()
 	_, prev, _, transactions, err := decodeNewIndex(scanner.namespace, indexVal)
@@ -278,7 +278,7 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 
 	dataKey := constructDataKey(namespace, blockNum, key, 0, 0, nil)
 	dbItr.Seek(dataKey)
-	dbItr.Next()
+	//dbItr.Next()
 
 	indexVal := dbItr.Key()
 	_, prev, _, transactions, err := decodeNewIndex(namespace, indexVal)
@@ -394,7 +394,7 @@ func (scanner *versionScanner) updateBlock() error {
 	scanner.currentBlock = prev
 	dataKey := constructDataKey(scanner.namespace, prev, scanner.key, 0, 0, nil)
 	scanner.dbItr.Seek(dataKey)
-	scanner.dbItr.Next()
+	//scanner.dbItr.Next()
 	scanner.indexVal = scanner.dbItr.Key()
 	_, _, _, transactions, err := decodeNewIndex(scanner.namespace, scanner.indexVal)
 	if err != nil {
