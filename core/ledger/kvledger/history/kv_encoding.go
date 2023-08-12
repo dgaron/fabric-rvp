@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"bytes"
+
 	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/pkg/errors"
 )
@@ -21,7 +23,7 @@ type rangeScan struct {
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
-	emptyValue		= []byte{}
+	emptyValue      = []byte{}
 )
 
 // DataKey: ns~blockNum~len(key)~key~prev~numVersions~[]transactions
@@ -54,13 +56,13 @@ func (r *rangeScan) decodeNewIndex(dataKey dataKey) (uint64, uint64, uint64, []u
 	newIndexBytes := bytes.TrimPrefix(dataKey, r.startKey)
 	blockNum, blockNumBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes)
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, 0, nil, err
 	}
 	totalBytesConsumed += blockNumBytesConsumed
 
 	keyLen, keyLenBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, 0, nil, err
 	}
 	totalBytesConsumed += keyLenBytesConsumed
 
@@ -69,13 +71,13 @@ func (r *rangeScan) decodeNewIndex(dataKey dataKey) (uint64, uint64, uint64, []u
 
 	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, 0, nil, err
 	}
 	totalBytesConsumed += prevBytesConsumed
 
 	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, 0, nil, err
 	}
 	totalBytesConsumed += versionBytesConsumed
 
@@ -87,7 +89,7 @@ func (r *rangeScan) decodeNewIndex(dataKey dataKey) (uint64, uint64, uint64, []u
 		lastTxBytesConsumed = bytesConsumed
 		currentTxStart += bytesConsumed
 		if err != nil {
-			return 0, 0, nil, err
+			return 0, 0, 0, nil, err
 		}
 		transactions = append(transactions, tx)
 	}
