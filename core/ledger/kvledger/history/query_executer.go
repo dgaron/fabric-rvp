@@ -27,7 +27,8 @@ type QueryExecutor struct {
 
 // GetHistoryForKey implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonledger.ResultsIterator, error) {
-	dbItr, err := q.levelDB.GetIterator(nil, nil)
+	rangeScan := constructRangeScan(namespace)
+	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
 		return nil, err
 	}
@@ -44,14 +45,14 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 		return nil, err
 	}
 
-	dataKey := constructDataKey(namespace, blockNum, key)
-	found := dbItr.Seek(dataKey)
-	if !found {
-		return nil, errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", key, blockNum)
-	}
+	dataKey := constructDataKey(namespace, blockNum, key, 0, 0, nil)
+	dbItr.Seek(dataKey)
+	dbItr.Next()
 
-	indexVal := dbItr.Value()
-	prev, _, transactions, err := decodeNewIndex(indexVal)
+	// Now we must read the actual key value 
+	indexVal := dbItr.Key()
+
+	_, prev, _, transactions, err := decodeNewIndex(indexVal)
 	if err != nil {
 		return nil, err
 	}
@@ -118,13 +119,12 @@ func (scanner *historyScanner) Close() {
 func (scanner *historyScanner) updateBlock() error {
 	logger.Debugf("Updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, scanner.previousBlock)
 	scanner.currentBlock = scanner.previousBlock
-	dataKey := constructDataKey(scanner.namespace, scanner.previousBlock, scanner.key)
-	found := scanner.dbItr.Seek(dataKey)
-	if !found {
-		return errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", scanner.key, scanner.previousBlock)
-	}
-	indexVal := scanner.dbItr.Value()
-	prev, _, transactions, err := decodeNewIndex(indexVal)
+	dataKey := constructDataKey(scanner.namespace, scanner.previousBlock, scanner.key, 0, 0, nil)
+	scanner.dbItr.Seek(dataKey)
+	scanner.dbItr.Next()
+
+	indexVal := scanner.dbItr.Key()
+	_, prev, _, transactions, err := decodeNewIndex(indexVal)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,8 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d, end: %d cannot be less than 1", start, end)
 	}
 
-	dbItr, err := q.levelDB.GetIterator(nil, nil)
+	rangeScan := constructRangeScan(namespace)
+	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
 		return nil, err
 	}
@@ -275,14 +276,12 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, err
 	}
 
-	dataKey := constructDataKey(namespace, blockNum, key)
-	found := dbItr.Seek(dataKey)
-	if !found {
-		return nil, errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", key, blockNum)
-	}
+	dataKey := constructDataKey(namespace, blockNum, key, 0, 0, nil)
+	dbItr.Seek(dataKey)
+	dbItr.Next()
 
-	indexVal := dbItr.Value()
-	prev, _, transactions, err := decodeNewIndex(indexVal)
+	indexVal := dbItr.Key()
+	_, prev, _, transactions, err := decodeNewIndex(indexVal)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +293,7 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	scanner := &versionScanner{namespace, key, dbItr, q.blockStore, blockNum, indexVal, txIndex, start, end}
 	// Find first block containing end version in range
 	for {
-		_, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+		_, _, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
 		if err != nil {
 			return nil, err
 		}
@@ -324,7 +323,7 @@ type versionScanner struct {
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
 	currentBlock uint64
-	indexVal     newIndex
+	indexVal     dataKey
 	txIndex      int
 	start        uint64
 	end          uint64
@@ -332,7 +331,7 @@ type versionScanner struct {
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 
-	_, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
+	_, _, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +348,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 			// Iterator exhausted
 			return nil, nil
 		}
-		_, _, transactions, err = decodeNewIndex(scanner.indexVal)
+		_, _, _, transactions, err = decodeNewIndex(scanner.indexVal)
 		if err != nil {
 			return nil, err
 		}
@@ -387,19 +386,17 @@ func (scanner *versionScanner) Close() {
 }
 
 func (scanner *versionScanner) updateBlock() error {
-	prev, _, _, err := decodeNewIndex(scanner.indexVal)
+	_, prev, _, _, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return err
 	}
 	logger.Debugf("Updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, prev)
 	scanner.currentBlock = prev
 	dataKey := constructDataKey(scanner.namespace, prev, scanner.key)
-	found := scanner.dbItr.Seek(dataKey)
-	if !found {
-		return errors.Errorf("Error from dbItr.Seek() for key: %s, block: %d", scanner.key, prev)
-	}
-	scanner.indexVal = scanner.dbItr.Value()
-	_, _, transactions, err := decodeNewIndex(scanner.indexVal)
+	scanner.dbItr.Seek(dataKey)
+	scanner.dbItr.Next()
+	scanner.indexVal = scanner.dbItr.Key()
+	_, _, _, transactions, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return err
 	}

@@ -85,7 +85,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
-	dataKeys := make(map[string]newIndex)
+	dataKeys := make(map[string]dataKey)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -144,7 +144,7 @@ func (d *DB) Commit(block *common.Block) error {
 						indexVal, present := dataKeys[kvWrite.Key]
 						if present {
 							// presence in dataKeys implies presence in globalIndex
-							prev, numVersions, transactions, err = decodeNewIndex(indexVal)
+							_, prev, numVersions, transactions, err = decodeNewIndex(indexVal)
 							if err != nil {
 								return err
 							}
@@ -164,11 +164,8 @@ func (d *DB) Commit(block *common.Block) error {
 
 					d.globalIndex[kvWrite.Key] = constructGlobalIndex(blockNo, numVersions)
 
-					indexVal := constructNewIndex(prev, numVersions, transactions)
-					dataKeys[kvWrite.Key] = indexVal
-
-					dataKey := constructDataKey(ns, blockNo, kvWrite.Key)
-					dbBatch.Put(dataKey, indexVal)
+					dataKey := constructDataKey(ns, blockNo, kvWrite.Key, prev, numVersions, transactions)
+					dbBatch.Put(dataKey, emptyValue)
 				}
 			}
 

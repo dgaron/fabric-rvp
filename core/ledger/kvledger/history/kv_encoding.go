@@ -12,7 +12,6 @@ import (
 )
 
 type dataKey []byte
-type newIndex []byte
 type globalIndex []byte
 
 type rangeScan struct {
@@ -22,32 +21,69 @@ type rangeScan struct {
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
+	emptyValue		= []byte{}
 )
 
-func constructNewIndex(prev uint64, numVersions uint64, transactions []uint64) newIndex {
-	var k []byte
+// DataKey: ns~blockNum~len(key)~key~prev~numVersions~[]transactions
+func constructDataKey(ns string, blocknum uint64, key string, prev uint64, numVersions uint64, transactions []uint64) dataKey {
+	k := append([]byte(ns), compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
+	k = append(k, compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	k = append(k, []byte(key)...)
 	k = append(k, util.EncodeOrderPreservingVarUint64(prev)...)
 	k = append(k, util.EncodeOrderPreservingVarUint64(numVersions)...)
 	for _, tx := range transactions {
 		k = append(k, util.EncodeOrderPreservingVarUint64(tx)...)
 	}
-	return newIndex(k)
+	return dataKey(k)
 }
 
-func decodeNewIndex(newIndex newIndex) (uint64, uint64, []uint64, error) {
-	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex)
+func constructRangeScan(ns string) *rangeScan {
+	k := append([]byte(ns), compositeKeySep...)
+
+	return &rangeScan{
+		startKey: k,
+		endKey:   append(k, 0xff),
+	}
+}
+
+// Returns blockNum, prev, numVersions, []transactions
+func (r *rangeScan) decodeNewIndex(dataKey dataKey) (uint64, uint64, uint64, []uint64, error) {
+	var totalBytesConsumed int
+	newIndexBytes := bytes.TrimPrefix(dataKey, r.startKey)
+	blockNum, blockNumBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes)
 	if err != nil {
 		return 0, 0, nil, err
 	}
-	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex[prevBytesConsumed:])
+	totalBytesConsumed += blockNumBytesConsumed
+
+	keyLen, keyLenBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
 	if err != nil {
 		return 0, 0, nil, err
 	}
+	totalBytesConsumed += keyLenBytesConsumed
+
+	// Increment placeholder by number of bytes used for key
+	totalBytesConsumed += int(keyLen)
+
+	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	totalBytesConsumed += prevBytesConsumed
+
+	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	totalBytesConsumed += versionBytesConsumed
+
 	var transactions []uint64
-	currentTxStart := prevBytesConsumed + versionBytesConsumed
+	currentTxStart := totalBytesConsumed
 	var lastTxBytesConsumed int
-	for i := currentTxStart; i < len(newIndex); i += lastTxBytesConsumed {
-		tx, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndex[currentTxStart:])
+	for i := currentTxStart; i < len(newIndexBytes); i += lastTxBytesConsumed {
+		tx, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[currentTxStart:])
 		lastTxBytesConsumed = bytesConsumed
 		currentTxStart += bytesConsumed
 		if err != nil {
@@ -55,7 +91,7 @@ func decodeNewIndex(newIndex newIndex) (uint64, uint64, []uint64, error) {
 		}
 		transactions = append(transactions, tx)
 	}
-	return prev, numVersions, transactions, nil
+	return blockNum, prev, numVersions, transactions, nil
 }
 
 func constructGlobalIndex(prev uint64, numVersions uint64) globalIndex {
@@ -80,13 +116,4 @@ func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
 			prevBytesConsumed+versionBytesConsumed, len(globalIndex))
 	}
 	return prev, numVersions, nil
-}
-
-func constructDataKey(ns string, blocknum uint64, key string) dataKey {
-	k := append([]byte(ns), compositeKeySep...)
-	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
-	k = append(k, compositeKeySep...)
-	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
-	k = append(k, []byte(key)...)
-	return dataKey(k)
 }
