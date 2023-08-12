@@ -59,7 +59,7 @@ func decodeNewIndex(namespace string, dataKey dataKey) (uint64, uint64, uint64, 
 	if err != nil {
 		return 0, 0, 0, nil, err
 	}
-	totalBytesConsumed += blockNumBytesConsumed
+	totalBytesConsumed += blockNumBytesConsumed + len(compositeKeySep)
 
 	keyLen, keyLenBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
 	if err != nil {
