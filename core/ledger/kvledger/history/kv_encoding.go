@@ -51,9 +51,10 @@ func constructRangeScan(ns string) *rangeScan {
 }
 
 // Returns blockNum, prev, numVersions, []transactions
-func (r *rangeScan) decodeNewIndex(dataKey dataKey) (uint64, uint64, uint64, []uint64, error) {
+func decodeNewIndex(namespace string, dataKey dataKey) (uint64, uint64, uint64, []uint64, error) {
 	var totalBytesConsumed int
-	newIndexBytes := bytes.TrimPrefix(dataKey, r.startKey)
+	startKey := append([]byte(namespace), compositeKeySep...)
+	newIndexBytes := bytes.TrimPrefix(dataKey, startKey)
 	blockNum, blockNumBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes)
 	if err != nil {
 		return 0, 0, 0, nil, err

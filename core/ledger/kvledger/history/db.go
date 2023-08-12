@@ -144,7 +144,7 @@ func (d *DB) Commit(block *common.Block) error {
 						indexVal, present := dataKeys[kvWrite.Key]
 						if present {
 							// presence in dataKeys implies presence in globalIndex
-							_, prev, numVersions, transactions, err = decodeNewIndex(indexVal)
+							_, prev, numVersions, transactions, err = decodeNewIndex(ns, indexVal)
 							if err != nil {
 								return err
 							}
