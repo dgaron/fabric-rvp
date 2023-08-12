@@ -76,11 +76,13 @@ type historyScanner struct {
 }
 
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
-	if scanner.txIndex <= -1 {
-		if scanner.currentBlock == scanner.previousBlock {
+	if scanner.txIndex == -1 {
+		oldBlockNum := scanner.currentBlock
+		scanner.updateBlock()
+		if scanner.currentBlock == oldBlockNum {
+			// Iterator exhausted
 			return nil, nil
 		}
-		scanner.updateBlock()
 	}
 
 	blockNum := scanner.currentBlock
