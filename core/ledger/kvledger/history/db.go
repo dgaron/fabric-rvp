@@ -165,7 +165,7 @@ func (d *DB) Commit(block *common.Block) error {
 					d.globalIndex[kvWrite.Key] = constructGlobalIndex(blockNo, numVersions)
 
 					dataKey := constructDataKey(ns, blockNo, kvWrite.Key, prev, numVersions, transactions)
-					dbBatch.Put(dataKey, emptyValue)
+					dataKeys[kvWrite.Key] = dataKey
 				}
 			}
 
@@ -173,6 +173,10 @@ func (d *DB) Commit(block *common.Block) error {
 			logger.Debugf("Skipping transaction [%d] since it is not an endorsement transaction\n", tranNo)
 		}
 		tranNo++
+	}
+
+	for _, dataKey := range dataKeys {
+		dbBatch.Put(dataKey, emptyValue)
 	}
 
 	// add savepoint for recovery purpose
