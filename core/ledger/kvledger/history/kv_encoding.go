@@ -67,7 +67,7 @@ func decodeNewIndex(namespace string, dataKey dataKey) (uint64, uint64, uint64, 
 	}
 	totalBytesConsumed += keyLenBytesConsumed
 
-	// Increment placeholder by number of bytes used for key
+	key := string(newIndexBytes[totalBytesConsumed:totalBytesConsumed + keyLen])
 	totalBytesConsumed += int(keyLen)
 
 	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
@@ -94,6 +94,8 @@ func decodeNewIndex(namespace string, dataKey dataKey) (uint64, uint64, uint64, 
 		}
 		transactions = append(transactions, tx)
 	}
+	logger.Debugf("BlockNum: %d, len(key): %d, key: %s, prev: %d, numVersions: %d, []transactions: %v\n", 
+				blockNum, keyLen, key, prev, numVersions, transactions)
 	return blockNum, prev, numVersions, transactions, nil
 }
 
