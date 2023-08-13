@@ -68,6 +68,7 @@ func decodeNewIndex(namespace string, dataKey dataKey) (uint64, uint64, uint64, 
 	totalBytesConsumed += keyLenBytesConsumed
 
 	key := string(newIndexBytes[totalBytesConsumed:totalBytesConsumed + keyLen])
+	// keyLen bytes are used to store the key
 	totalBytesConsumed += int(keyLen)
 
 	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(newIndexBytes[totalBytesConsumed:])
