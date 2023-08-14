@@ -79,4 +79,4 @@ replace github.com/onsi/gomega => github.com/onsi/gomega v1.9.0
 
 replace github.com/hyperledger/fabric-protos-go => github.com/dgaron/fabric-protos/bindings/go-apiv1 v0.0.0-20230711214520-bd440f9b223c
 
-replace github.com/hyperledger/fabric-chaincode-go => github.com/dgaron/fabric-chaincode-go v0.0.0-20230711231444-da83c80ff877
+replace github.com/hyperledger/fabric-chaincode-go => github.com/dgaron/fabric-chaincode-go v0.0.0-20230727170748-1c20ca7c07d9
