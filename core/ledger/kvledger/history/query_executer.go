@@ -143,7 +143,9 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 	validKeys := []string{}
 	for _, key := range keys {
 		dbItr, err := q.levelDB.GetIterator(nil, nil)
-
+		if err != nil {
+			return nil, err
+		}
 		globalIndexBytes, present := q.globalIndex[key]
 		if !present {
 			continue
