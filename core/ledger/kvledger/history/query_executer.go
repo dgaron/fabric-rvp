@@ -149,12 +149,12 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			continue
 		} // Else key is valid & we add it to the collection
 		validKeys = append(validKeys, key)
-	
+
 		blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
 		if err != nil {
 			return nil, err
 		}
-	
+
 		historyKey := constructDataKey(namespace, blockNum, key)
 		dbItr.Seek(historyKey)
 
@@ -165,7 +165,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		}
 		txIndex := len(transactions) - 1
 
-		keyMap[key] = keyData{rangeScan, dbItr, blockNum, prev, transactions, txIndex}
+		keyMap[key] = keyData{dbItr, blockNum, prev, transactions, txIndex, false}
 
 	}
 	scanner := &parallelHistoryScanner{namespace, validKeys, keyMap, q.blockStore, nil, 0, nil, 0}
@@ -177,12 +177,12 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 }
 
 type keyData struct {
-	dbItr        iterator.Iterator
+	dbItr         iterator.Iterator
 	currentBlock  uint64
 	previousBlock uint64
-	transactions []uint64
-	txIndex      int
-	isExhausted		bool
+	transactions  []uint64
+	txIndex       int
+	isExhausted   bool
 }
 
 // historyScanner implements ResultsIterator for iterating through history results
@@ -191,7 +191,7 @@ type parallelHistoryScanner struct {
 	keys            []string
 	keyMap          map[string]keyData
 	blockStore      *blkstorage.BlockStore
-	currentBlockContents    *common.Block
+	currentBlock    *common.Block
 	currentBlockNum uint64
 	keysInBlock     []string
 	currentKeyIndex int
@@ -261,11 +261,11 @@ func (scanner *parallelHistoryScanner) Close() {
 }
 
 func (scanner *parallelHistoryScanner) nextBlock() error {
-	scanner.currentBlock = 0
+	scanner.currentBlockNum = 0
 	scanner.keysInBlock = []string{}
 	for _, key := range scanner.keys {
 		keyData := scanner.keyMap[key]
-		if keyData.isExhausted {	
+		if keyData.isExhausted {
 			continue
 		}
 		blockNum := keyData.currentBlock
@@ -288,16 +288,17 @@ func (scanner *parallelHistoryScanner) nextBlock() error {
 	return nil
 }
 
-func (scanner *parallelHistoryScanner) updateKeyData(keyData keyData) error {
-	if (keyData.currentBlock == keyData.previousBlock) {
+func (scanner *parallelHistoryScanner) updateKeyData(key string) error {
+	keyData := scanner.keyMap[key]
+	if keyData.currentBlock == keyData.previousBlock {
 		keyData.isExhausted = true
 		scanner.keyMap[key] = keyData
 		return nil
 	}
 	nextBlockNum := keyData.previousBlock
-	historyKey := constructDataKey(scanner.namespace, nextBlockNum, scanner.key)
+	historyKey := constructDataKey(scanner.namespace, nextBlockNum, key)
 	keyData.dbItr.Seek(historyKey)
-	indexVal := scanner.dbItr.Value()
+	indexVal := keyData.dbItr.Value()
 	prev, _, transactions, err := decodeNewIndex(indexVal)
 	if err != nil {
 		return err
