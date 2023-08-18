@@ -268,9 +268,6 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	// if versionNum > scanner.end {
-	// 	return nil, nil
-	// }
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
