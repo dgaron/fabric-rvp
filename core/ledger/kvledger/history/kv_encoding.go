@@ -17,6 +17,9 @@ type dataKey []byte
 type rangeScan struct {
 	startKey, endKey []byte
 }
+type versionScan struct {
+	prefix, startKey, endKey []byte
+}
 
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
@@ -56,20 +59,18 @@ func constructRangeScan(ns string, key string) *rangeScan {
 	}
 }
 
-func constructVersionScan(ns string, key string, start uint64, end uint64) *rangeScan {
-	s := append([]byte(ns), compositeKeySep...)
-	s = append(s, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
-	s = append(s, []byte(key)...)
-	s = append(s, compositeKeySep...)
-	s = append(s, util.EncodeOrderPreservingVarUint64(start)...)
+func constructVersionScan(ns string, key string, start uint64, end uint64) *versionScan {
+	p := append([]byte(ns), compositeKeySep...)
+	p = append(p, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	p = append(p, []byte(key)...)
+	p = append(p, compositeKeySep...)
 
-	e := append([]byte(ns), compositeKeySep...)
-	e = append(e, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
-	e = append(e, []byte(key)...)
-	e = append(e, compositeKeySep...)
-	e = append(e, util.EncodeOrderPreservingVarUint64(end+1)...)
+	s := append(p, util.EncodeOrderPreservingVarUint64(start)...)
 
-	return &rangeScan{
+	e := append(p, util.EncodeOrderPreservingVarUint64(end+1)...)
+
+	return &versionScan{
+		prefix:	  p,
 		startKey: s,
 		endKey:   e,
 	}
@@ -77,6 +78,29 @@ func constructVersionScan(ns string, key string, start uint64, end uint64) *rang
 
 func (r *rangeScan) decodeVersionBlockTran(dataKey dataKey) (uint64, uint64, uint64, error) {
 	versionBlockTranBytes := bytes.TrimPrefix(dataKey, r.startKey)
+	versionNum, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	blockNum, blockBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[versionBytesConsumed:])
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	tranNum, tranBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes[blockBytesConsumed+versionBytesConsumed:])
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	// The following error should never happen. Keep the check just in case there is some unknown bug.
+	if versionBytesConsumed+blockBytesConsumed+tranBytesConsumed != len(versionBlockTranBytes) {
+		return 0, 0, 0, errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumTranNumBytes (%d)",
+			blockBytesConsumed+tranBytesConsumed, len(versionBlockTranBytes))
+	}
+
+	return versionNum, blockNum, tranNum, nil
+}
+
+func (v *versionScan) decodeVersionBlockTran(dataKey dataKey) (uint64, uint64, uint64, error) {
+	versionBlockTranBytes := bytes.TrimPrefix(dataKey, v.prefix)
 	versionNum, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(versionBlockTranBytes)
 	if err != nil {
 		return 0, 0, 0, err

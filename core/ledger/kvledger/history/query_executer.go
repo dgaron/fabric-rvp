@@ -233,7 +233,7 @@ func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string,
 }
 
 type versionScanner struct {
-	rangeScan  *rangeScan
+	versionScan  *versionScan
 	namespace  string
 	key        string
 	dbItr      iterator.Iterator
@@ -247,21 +247,15 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
 
-	rangeScan := constructVersionScan(namespace, key, start, end)
-	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
+	versionScan := constructVersionScan(namespace, key, start, end)
+	dbItr, err := q.levelDB.GetIterator(versionScan.startKey, versionScan.endKey)
 	if err != nil {
 		return nil, err
 	}
 	if dbItr.First() {
 		dbItr.Prev()
 	}
-	// desiredStart := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(start)...)
-	// if !dbItr.Seek(desiredStart) {
-	// 	dbItr.Last()
-	// } else {
-	// 	dbItr.Prev()
-	// }
-	return &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, start, end}, nil
+	return &versionScanner{versionScan, namespace, key, dbItr, q.blockStore, start, end}, nil
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
@@ -270,7 +264,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	}
 
 	historyKey := scanner.dbItr.Key()
-	_, blockNum, tranNum, err := scanner.rangeScan.decodeVersionBlockTran(historyKey)
+	_, blockNum, tranNum, err := scanner.versionScan.decodeVersionBlockTran(historyKey)
 	if err != nil {
 		return nil, err
 	}
