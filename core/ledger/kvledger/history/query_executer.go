@@ -248,17 +248,17 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
 
-	rangeScan := constructRangeScan(namespace, key)
+	rangeScan := constructVersionScan(namespace, key, start, end)
 	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 	if err != nil {
 		return nil, err
 	}
-	desiredStart := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(start)...)
-	if !dbItr.Seek(desiredStart) {
-		dbItr.Last()
-	} else {
-		dbItr.Prev()
-	}
+	// desiredStart := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(start)...)
+	// if !dbItr.Seek(desiredStart) {
+	// 	dbItr.Last()
+	// } else {
+	// 	dbItr.Prev()
+	// }
 	return &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, start, end}, nil
 }
 
@@ -272,9 +272,9 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if versionNum > scanner.end {
-		return nil, nil
-	}
+	// if versionNum > scanner.end {
+	// 	return nil, nil
+	// }
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 

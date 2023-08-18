@@ -18,6 +18,10 @@ type rangeScan struct {
 	startKey, endKey []byte
 }
 
+type versionScan struct {
+	startKey, endKey []byte
+}
+
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
@@ -53,6 +57,25 @@ func constructRangeScan(ns string, key string) *rangeScan {
 	return &rangeScan{
 		startKey: k,
 		endKey:   append(k, 0xff),
+	}
+}
+
+func constructVersionScan(ns string, key string, start int, end int) *rangeScan {
+	s := append([]byte(ns), compositeKeySep...)
+	s = append(s, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	s = append(s, []byte(key)...)
+	s = append(s, compositeKeySep...)
+	s = append(s, util.EncodeOrderPreservingVarUint64(start)...)
+
+	e := append([]byte(ns), compositeKeySep...)
+	e = append(e, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	e = append(e, []byte(key)...)
+	e = append(e, compositeKeySep...)
+	e = append(e, util.EncodeOrderPreservingVarUint64(end)...)
+
+	return &rangeScan{
+		startKey: s,
+		endKey:   e,
 	}
 }
 
