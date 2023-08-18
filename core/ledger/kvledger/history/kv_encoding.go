@@ -67,7 +67,7 @@ func constructVersionScan(ns string, key string, start uint64, end uint64) *rang
 	e = append(e, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
 	e = append(e, []byte(key)...)
 	e = append(e, compositeKeySep...)
-	e = append(e, util.EncodeOrderPreservingVarUint64(end)...)
+	e = append(e, util.EncodeOrderPreservingVarUint64(end+1)...)
 
 	return &rangeScan{
 		startKey: s,

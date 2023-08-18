@@ -252,6 +252,9 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	if err != nil {
 		return nil, err
 	}
+	if dbItr.First() {
+		dbItr.Prev()
+	}
 	// desiredStart := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(start)...)
 	// if !dbItr.Seek(desiredStart) {
 	// 	dbItr.Last()
