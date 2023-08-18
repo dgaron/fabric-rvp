@@ -60,7 +60,7 @@ func constructRangeScan(ns string, key string) *rangeScan {
 	}
 }
 
-func constructVersionScan(ns string, key string, start int, end int) *rangeScan {
+func constructVersionScan(ns string, key string, start uint64, end uint64) *rangeScan {
 	s := append([]byte(ns), compositeKeySep...)
 	s = append(s, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
 	s = append(s, []byte(key)...)
