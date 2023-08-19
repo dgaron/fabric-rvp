@@ -8,7 +8,6 @@ package history
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -21,7 +20,6 @@ import (
 	protoutil "github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
 	"io/ioutil"
-	"os"
 )
 
 var logger = flogging.MustGetLogger("history")
@@ -91,35 +89,9 @@ func (d *DB) Commit(block *common.Block) error {
 	dbBatch := d.levelDB.NewUpdateBatch()
 	dataKeys := make(map[string]newIndex)
 
-	historyMap := make(map[string][]byte)
 	globalIndexMap := make(map[string][]byte)
 
-	// Read existing data
-	filePath := "/var/PeerStorage/historyData.json"
-	if _, err := os.Stat(filePath); err == nil {
-		file, err := ioutil.ReadFile(filePath)
-		if err != nil {
-			return err
-		}
-
-		err = json.Unmarshal(file, &historyMap)
-		if err != nil {
-			return err
-		}
-	}
-
 	globalIndexPath := "/var/PeerStorage/globalIndexData.json"
-	if _, err := os.Stat(globalIndexPath); err == nil {
-		globalIndexFile, err := ioutil.ReadFile(globalIndexPath)
-		if err != nil {
-			return err
-		}
-
-		err = json.Unmarshal(globalIndexFile, &globalIndexMap)
-		if err != nil {
-			return err
-		}
-	}
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -203,9 +175,6 @@ func (d *DB) Commit(block *common.Block) error {
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
 
-					key := fmt.Sprintf("%s_%s_%d", ns, kvWrite.Key, blockNo)
-					historyMap[key] = indexVal
-
 					dataKey := constructDataKeyNew(ns, kvWrite.Key, blockNo)
 					dbBatch.Put(dataKey, indexVal)
 				}
@@ -227,11 +196,23 @@ func (d *DB) Commit(block *common.Block) error {
 		return err
 	}
 
-	file, _ := json.MarshalIndent(historyMap, "", " ")
-	_ = ioutil.WriteFile(filePath, file, 0644)
+	// Calculate the size of the globalIndexMap
+	var size int
+	for k, v := range globalIndexMap {
+		size += len(k) + len(v)
+	}
 
-	globalIndexFile, _ := json.MarshalIndent(globalIndexMap, "", " ")
-	_ = ioutil.WriteFile(globalIndexPath, globalIndexFile, 0644)
+	// Instead of marshalling the entire globalIndexMap, we'll marshal the size
+	sizeData, err := json.Marshal(size)
+	if err != nil {
+		return err
+	}
+
+	// Write the sizeData to the globalIndexData.json file
+	err = ioutil.WriteFile(globalIndexPath, sizeData, 0644)
+	if err != nil {
+		return err
+	}
 
 	logger.Debugf("Channel [%s]: Updates committed to history database for blockNo [%v]", d.name, blockNo)
 	return nil
