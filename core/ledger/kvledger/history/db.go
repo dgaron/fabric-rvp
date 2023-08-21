@@ -57,9 +57,10 @@ func (p *DBProvider) MarkStartingSavepoint(name string, savepoint *version.Heigh
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
-		levelDB:     p.leveldbProvider.GetDBHandle(name),
-		name:        name,
-		globalIndex: make(map[string][]byte),
+		levelDB:        p.leveldbProvider.GetDBHandle(name),
+		name:           name,
+		globalIndex:    make(map[string][]byte),
+		globalIndexMap: make(map[string][]byte),
 	}
 }
 
@@ -75,9 +76,10 @@ func (p *DBProvider) Drop(channelName string) error {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB     *leveldbhelper.DBHandle
-	name        string
-	globalIndex map[string][]byte
+	levelDB        *leveldbhelper.DBHandle
+	name           string
+	globalIndex    map[string][]byte
+	globalIndexMap map[string][]byte
 }
 
 // Commit implements method in HistoryDB interface
@@ -89,8 +91,6 @@ func (d *DB) Commit(block *common.Block) error {
 
 	dbBatch := d.levelDB.NewUpdateBatch()
 	dataKeys := make(map[string]newIndex)
-
-	globalIndexMap := make(map[string][]byte)
 
 	globalIndexPath := "/var/PeerStorage/globalIndexData.json"
 
@@ -170,7 +170,7 @@ func (d *DB) Commit(block *common.Block) error {
 					numVersions++
 
 					globalIndexVal := constructGlobalIndex(prev, numVersions)
-					globalIndexMap[kvWrite.Key] = globalIndexVal
+					d.globalIndexMap[kvWrite.Key] = globalIndexVal
 					d.globalIndex[kvWrite.Key] = globalIndexVal
 
 					indexVal := constructNewIndex(prev, numVersions, transactions)
@@ -199,7 +199,7 @@ func (d *DB) Commit(block *common.Block) error {
 
 	// Convert globalIndexMap to a protobuf representation
 	protoMap := GlobalIndexMap{}
-	for k, v := range globalIndexMap {
+	for k, v := range d.globalIndexMap {
 		protoMap.Entries = append(protoMap.Entries, &GlobalIndexEntry{
 			Key:   k,
 			Value: v,
