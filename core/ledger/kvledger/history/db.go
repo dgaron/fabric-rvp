@@ -7,6 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"os"
+	"sort"
+	"strconv"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -178,7 +182,7 @@ func (d *DB) Commit(block *common.Block) error {
 					dbBatch.Put(dataKey, indexVal)
 
 					// LOG DB
-					keyString := ns + "~" + strconv.FormatUint(blockNo, 10) + "~" + strconv.FormatInt(len(kvWrite.Key), 10) + "~" + kvWrite.Key
+					keyString := ns + "~" + strconv.FormatUint(blockNo, 10) + "~" + strconv.Itoa(len(kvWrite.Key)) + "~" + kvWrite.Key
 					tranBytes, _ := json.Marshal(transactions)
 					valString :=  strconv.FormatUint(prev, 10) + "~" + strconv.FormatUint(numVersions, 10) + "~" + string(tranBytes)
 					indexEntryMap[keyString] = valString
@@ -194,12 +198,14 @@ func (d *DB) Commit(block *common.Block) error {
 
 	// LOG DB
 	indexEntries := make([]string, 0, len(indexEntryMap))
-	for k, v := range indexEntries {
+	for k, v := range indexEntryMap {
 		entry := k + ": " + v + "\n"
 		indexEntries = append(indexEntries, entry)
 	}
 	sort.Strings(indexEntries)
-	TEMPFILE.Write(indexEntries)
+	for _, entry := range indexEntries {
+		TEMPFILE.WriteString(entry)
+	}
 	// END
 
 	// add savepoint for recovery purpose
