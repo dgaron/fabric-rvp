@@ -93,6 +93,13 @@ func (d *DB) Commit(block *common.Block) error {
 	// Get the invalidation byte array for the block
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
+	// LOG DB
+	TEMPFILE, _ := os.OpenFile("/var/index.json", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	defer TEMPFILE.Close()
+	indexEntryMap := make(map[string]string)
+	// END
+
+
 	// write each tran's write set to history db
 	for _, envBytes := range block.Data.Data {
 
@@ -169,6 +176,13 @@ func (d *DB) Commit(block *common.Block) error {
 
 					dataKey := constructDataKey(ns, blockNo, kvWrite.Key)
 					dbBatch.Put(dataKey, indexVal)
+
+					// LOG DB
+					keyString := ns + "~" + strconv.FormatUint(blockNo, 10) + "~" + strconv.FormatInt(len(kvWrite.Key), 10) + "~" + kvWrite.Key
+					tranBytes, _ := json.Marshal(transactions)
+					valString :=  strconv.FormatUint(prev, 10) + "~" + strconv.FormatUint(numVersions, 10) + "~" + string(tranBytes)
+					indexEntryMap[keyString] = valString
+					// END
 				}
 			}
 
@@ -177,6 +191,16 @@ func (d *DB) Commit(block *common.Block) error {
 		}
 		tranNo++
 	}
+
+	// LOG DB
+	indexEntries := make([]string, 0, len(indexEntryMap))
+	for k, v := range indexEntries {
+		entry := k + ": " + v + "\n"
+		indexEntries = append(indexEntries, entry)
+	}
+	sort.Strings(indexEntries)
+	TEMPFILE.Write(indexEntries)
+	// END
 
 	// add savepoint for recovery purpose
 	height := version.NewHeight(blockNo, tranNo)
