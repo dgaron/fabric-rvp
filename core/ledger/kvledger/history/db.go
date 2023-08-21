@@ -90,6 +90,12 @@ func (d *DB) Commit(block *common.Block) error {
     // Get the invalidation byte array for the block
     txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
+	// LOG DB
+	TEMPFILE, _ := os.OpenFile("/var/index.json", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	defer TEMPFILE.Close()
+	indexEntries := []string{}
+	// END
+
     // write each tran's write set to history db
     for _, envBytes := range block.Data.Data {
 
@@ -134,6 +140,13 @@ func (d *DB) Commit(block *common.Block) error {
                     dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
                     // No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
                     dbBatch.Put(dataKey, emptyValue)
+
+					// LOG DB
+					keyString := ns + "~" + strconv.FormatInt(len(kvWrite.Key), 10) + "~" + kvWrite.Key + "~" + strconv.FormatUint(blockNo, 10) + "~" + strconv.FormatUint(tranNo, 10)
+					valString := "null"
+					output += keyString + ": " + valString + "\n"
+					indexEntries = append(indexEntries, output)
+					// END
                 }
             }
 
@@ -142,6 +155,11 @@ func (d *DB) Commit(block *common.Block) error {
         }
         tranNo++
     }
+
+	// LOG DB
+	sort.Strings(indexEntries)
+	TEMPFILE.Write(indexEntries)
+	// END
 
     // add savepoint for recovery purpose
     height := version.NewHeight(blockNo, tranNo)
