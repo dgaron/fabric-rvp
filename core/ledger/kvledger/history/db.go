@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	"encoding/json"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -19,7 +18,9 @@ import (
 	"github.com/hyperledger/fabric/internal/pkg/txflags"
 	protoutil "github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 	"io/ioutil"
+	"strconv"
 )
 
 var logger = flogging.MustGetLogger("history")
@@ -196,17 +197,24 @@ func (d *DB) Commit(block *common.Block) error {
 		return err
 	}
 
-	// Calculate the size of the globalIndexMap
-	var size int
+	// Convert globalIndexMap to a protobuf representation
+	protoMap := GlobalIndexMap{}
 	for k, v := range globalIndexMap {
-		size += len(k) + len(v)
+		protoMap.Entries = append(protoMap.Entries, &GlobalIndexEntry{
+			Key:   k,
+			Value: v,
+		})
 	}
 
-	// Instead of marshalling the entire globalIndexMap, we'll marshal the size
-	sizeData, err := json.Marshal(size)
+	// Serialize it to binary
+	serializedData, err := proto.Marshal(&protoMap)
 	if err != nil {
 		return err
 	}
+
+	// Get the size of serialized data
+	size := len(serializedData)
+	sizeData := []byte(strconv.Itoa(size))
 
 	// Write the sizeData to the globalIndexData.json file
 	err = ioutil.WriteFile(globalIndexPath, sizeData, 0644)
