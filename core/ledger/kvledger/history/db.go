@@ -95,7 +95,7 @@ func (d *DB) Commit(block *common.Block) error {
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
 	// LOG DB
-	TEMPFILE, _ := os.OpenFile("/var/index.json", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	TEMPFILE, _ := os.OpenFile("/var/index.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	defer TEMPFILE.Close()
 	indexEntries := []string{}
 	// END
