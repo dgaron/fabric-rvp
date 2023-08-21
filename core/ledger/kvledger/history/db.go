@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"encoding/json"
 	"os"
 	"sort"
 	"strconv"
@@ -98,11 +99,10 @@ func (d *DB) Commit(block *common.Block) error {
 	txsFilter := txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 
 	// LOG DB
-	TEMPFILE, _ := os.OpenFile("/var/index.json", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	TEMPFILE, _ := os.OpenFile("/var/index.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	defer TEMPFILE.Close()
 	indexEntryMap := make(map[string]string)
 	// END
-
 
 	// write each tran's write set to history db
 	for _, envBytes := range block.Data.Data {
@@ -184,7 +184,7 @@ func (d *DB) Commit(block *common.Block) error {
 					// LOG DB
 					keyString := ns + "~" + strconv.FormatUint(blockNo, 10) + "~" + strconv.Itoa(len(kvWrite.Key)) + "~" + kvWrite.Key
 					tranBytes, _ := json.Marshal(transactions)
-					valString :=  strconv.FormatUint(prev, 10) + "~" + strconv.FormatUint(numVersions, 10) + "~" + string(tranBytes)
+					valString := strconv.FormatUint(prev, 10) + "~" + strconv.FormatUint(numVersions, 10) + "~" + string(tranBytes)
 					indexEntryMap[keyString] = valString
 					// END
 				}
