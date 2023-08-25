@@ -57,7 +57,7 @@ func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
 		levelDB:  p.leveldbProvider.GetDBHandle(name),
 		name:     name,
-		versions: make(map[string][]byte),
+		versions make(map[string][]byte),
 	}
 }
 
@@ -86,6 +86,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
+	dataKeys := make(map[string]newIndex)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -134,19 +135,34 @@ func (d *DB) Commit(block *common.Block) error {
 				ns := nsRWSet.NameSpace
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
-					var versionNum uint64
-					versionBytes, present := d.versions[kvWrite.Key]
+					var (
+						versions uint64
+						transactions []uint64
+					)
+					versionsBytes, present := d.versions[kvWrite.Key]
 					if present {
-						versionNum, _, err = util.DecodeOrderPreservingVarUint64(versionBytes)
+						versions, _, err = util.DecodeOrderPreservingVarUint64(versionsBytes)
 						if err != nil {
 							return err
 						}
+						indexVal, present := dataKeys[kvWrite.Key]
+						if present {
+							_, transactions, err = decodeNewIndex(indexVal)
+							if err != nil {
+								return err
+							}
+						}
 					}
-					versionNum++
-					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versionNum)
+					versions++
+					transactions = append(transactions, tranNo)
+					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versions)
 
-					dataKey := constructDataKey(ns, kvWrite.Key, versionNum, blockNo, tranNo)
-					dbBatch.Put(dataKey, emptyValue)
+					newIndex := constructNewIndex(blockNo, transactions)
+					dataKeys[kvWrite.Key] = indexVal
+
+					minVersion := versions - len(transactions) + 1
+					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
+					dbBatch.Put(dataKey, indexVal)
 				}
 			}
 
