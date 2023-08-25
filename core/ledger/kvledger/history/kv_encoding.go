@@ -10,10 +10,10 @@ import (
 	"bytes"
 
 	"github.com/hyperledger/fabric/common/ledger/util"
-	"github.com/pkg/errors"
 )
 
 type dataKey []byte
+type newIndex []byte
 type rangeScan struct {
 	startKey, endKey []byte
 }
@@ -40,7 +40,7 @@ func constructDataKey(ns string, key string, minVersion uint64) dataKey {
 
 func constructNewIndex(blockNum uint64, transactions []uint64) newIndex {
 	var ni []byte
-	ni = append(ni, util.EncodeOrderPreservingVarUint64(blocniNum)...)
+	ni = append(ni, util.EncodeOrderPreservingVarUint64(blockNum)...)
 	for _, tx := range transactions {
 		ni = append(ni, util.EncodeOrderPreservingVarUint64(tx)...)
 	}
@@ -67,7 +67,6 @@ func decodeNewIndex(newIndex newIndex) (uint64, []uint64, error) {
 	return blockNum, transactions, nil
 }
 
-
 // constructRangescanKeys returns start and endKey for performing a range scan
 // that covers all the keys for <ns, key>.
 // startKey = namespace~len(key)~key~
@@ -86,7 +85,7 @@ func constructRangeScan(ns string, key string) *rangeScan {
 
 func (r *rangeScan) decodeMinVersion(dataKey dataKey) (uint64, error) {
 	minVersionBytes := bytes.TrimPrefix(dataKey, r.startKey)
-	minVersion, minVersionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(minVersionBytes)
+	minVersion, _, err := util.DecodeOrderPreservingVarUint64(minVersionBytes)
 	if err != nil {
 		return 0, err
 	}

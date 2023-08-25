@@ -57,7 +57,7 @@ func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
 		levelDB:  p.leveldbProvider.GetDBHandle(name),
 		name:     name,
-		versions make(map[string][]byte),
+		versions: make(map[string][]byte),
 	}
 }
 
@@ -136,7 +136,7 @@ func (d *DB) Commit(block *common.Block) error {
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					var (
-						versions uint64
+						versions     uint64
 						transactions []uint64
 					)
 					versionsBytes, present := d.versions[kvWrite.Key]
@@ -157,10 +157,10 @@ func (d *DB) Commit(block *common.Block) error {
 					transactions = append(transactions, tranNo)
 					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versions)
 
-					newIndex := constructNewIndex(blockNo, transactions)
+					indexVal := constructNewIndex(blockNo, transactions)
 					dataKeys[kvWrite.Key] = indexVal
 
-					minVersion := versions - len(transactions) + 1
+					minVersion := versions - uint64(len(transactions)+1)
 					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
 					dbBatch.Put(dataKey, indexVal)
 				}
