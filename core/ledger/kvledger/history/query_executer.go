@@ -252,14 +252,14 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	if err != nil {
 		return nil, err
 	}
-	if dbItr.First() {
-		dbItr.Prev()
+	if dbItr.Last() {
+		dbItr.Next()
 	}
 	return &versionScanner{versionScan, namespace, key, dbItr, q.blockStore, start, end}, nil
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-	if !scanner.dbItr.Next() {
+	if !scanner.dbItr.Prev() {
 		return nil, nil
 	}
 
