@@ -285,7 +285,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	scanner.txIndex--
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n, firstVersionInBlock: %d, currentVersion: %d\n",
-		scanner.namespace, scanner.key, blockNum, tranNum, firstVersionInBlock, currentVersion)
+		scanner.namespace, scanner.key, blockNum, tranNum, firstVersionInBlock, currentVersionNum)
 
 	// Get the transaction from block storage that is associated with this history record
 	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
