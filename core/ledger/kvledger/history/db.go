@@ -154,9 +154,9 @@ func (d *DB) Commit(block *common.Block) error {
 						}
 					}
 					versions++
+					transactions = append(transactions, tranNo)
 					minVersion := versions - uint64(len(transactions)) + 1
 
-					transactions = append(transactions, tranNo)
 					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versions)
 
 					indexVal := constructNewIndex(blockNo, transactions)
