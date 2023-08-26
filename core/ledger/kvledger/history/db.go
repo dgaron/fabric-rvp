@@ -154,13 +154,14 @@ func (d *DB) Commit(block *common.Block) error {
 						}
 					}
 					versions++
+					minVersion := versions - uint64(len(transactions)) + 1
+
 					transactions = append(transactions, tranNo)
 					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versions)
 
 					indexVal := constructNewIndex(blockNo, transactions)
 					dataKeys[kvWrite.Key] = indexVal
 
-					minVersion := versions - uint64(len(transactions)+1)
 					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
 					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", kvWrite.Key, minVersion, blockNo, transactions)
 					dbBatch.Put(dataKey, indexVal)
