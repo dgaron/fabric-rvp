@@ -260,6 +260,9 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 			return nil, err
 		}
 		txIndex = int(end - firstVersionInBlock)
+		if txIndex >= len(transactions) {
+			txIndex = len(transactions) - 1
+		}
 	} else {
 		txIndex = -1
 	}
