@@ -273,6 +273,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 		return nil, err
 	}
 	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
+	logger.Debugf("First version in block: %d, Current version: %d\n", firstVersionInBlock, currentVersionNum)
 	if currentVersionNum < scanner.start {
 		logger.Debugf("First requested version %d found for key: %s", scanner.start, scanner.key)
 		return nil, nil
