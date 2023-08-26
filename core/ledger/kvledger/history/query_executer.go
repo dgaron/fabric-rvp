@@ -237,11 +237,9 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	}
 
 	rangeScan := constructRangeScan(namespace, key)
-
-	startKey := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(start)...)
 	endKey := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(end+1)...)
 
-	dbItr, err := q.levelDB.GetIterator(startKey, endKey)
+	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, endKey)
 	if err != nil {
 		return nil, err
 	}
