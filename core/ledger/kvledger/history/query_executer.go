@@ -179,6 +179,80 @@ func (scanner *multipleHistoryScanner) Close() {
 	}
 }
 
+
+type versionScanner struct {
+	rangeScan  *rangeScan
+	namespace  string
+	key        string
+	dbItr      iterator.Iterator
+	blockStore *blkstorage.BlockStore
+	current    uint64
+	start      uint64
+	end        uint64
+}
+
+func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
+	if end < start {
+		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
+	}
+	rangeScan := constructRangeScan(namespace, key)
+	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
+	if err != nil {
+		return nil, err
+	}
+	scanner = &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, start, end}
+	for {
+		scanner.current++
+		if !scanner.dbItr.Next() || scanner.current >= scanner.start {
+			scanner.dbItr.Prev()
+			scanner.current--
+			return scanner, nil
+		}
+	}
+}
+
+func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
+	if !scanner.dbItr.Next() {
+		return nil, nil
+	}
+	scanner.current++
+	if scanner.current > scanner.end {
+		return nil, nil
+	}
+
+	historyKey := scanner.dbItr.Key()
+	blockNum, tranNum, err := scanner.rangeScan.decodeBlockNumTranNum(historyKey)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
+		scanner.namespace, scanner.key, blockNum, tranNum)
+
+	// Get the transaction from block storage that is associated with this history record
+	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
+	queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.key)
+	if err != nil {
+		return nil, err
+	}
+	if queryResult == nil {
+		// should not happen, but make sure there is inconsistency between historydb and statedb
+		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.key, blockNum, tranNum)
+		return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.key, blockNum, tranNum)
+	}
+	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
+		scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
+	return queryResult, nil
+}
+
+func (scanner *versionScanner) Close() {
+	scanner.dbItr.Release()
+}
+
 // getTxIDandKeyWriteValueFromTran inspects a transaction for writes to a given key
 func getKeyModificationFromTran(tranEnvelope *common.Envelope, namespace string, key string) (commonledger.QueryResult, error) {
 	logger.Debugf("Entering getKeyModificationFromTran %s:%s", namespace, key)
