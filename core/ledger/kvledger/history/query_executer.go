@@ -179,7 +179,6 @@ func (scanner *multipleHistoryScanner) Close() {
 	}
 }
 
-
 type versionScanner struct {
 	rangeScan  *rangeScan
 	namespace  string
@@ -200,7 +199,7 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	if err != nil {
 		return nil, err
 	}
-	scanner = &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, start, end}
+	scanner := &versionScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, start, end}
 	for {
 		scanner.current++
 		if !scanner.dbItr.Next() || scanner.current >= scanner.start {

@@ -985,7 +985,6 @@ func (h *Handler) HandleGetVersionsForKey(msg *pb.ChaincodeMessage, txContext *T
 	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
 }
 
-
 func isCollectionSet(collection string) bool {
 	return collection != ""
 }
