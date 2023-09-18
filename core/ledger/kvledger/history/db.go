@@ -84,7 +84,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
-	dataKeys := make(map[string]newIndex)
+	dataKeys := make(map[string][]uint64)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -148,19 +148,15 @@ func (d *DB) Commit(block *common.Block) error {
 						if err != nil {
 							return err
 						}
-						indexVal, present := dataKeys[kvWrite.Key]
+						recordedTransactions, present := dataKeys[kvWrite.Key]
 						if present {
-							_, transactions, err = decodeNewIndex(indexVal)
-							if err != nil {
-								return err
-							}
+							transactions = recordedTransactions
 						}
 					}
 					versions++
 					transactions = append(transactions, tranNo)
 
-					indexVal := constructNewIndex(blockNo, transactions)
-					dataKeys[kvWrite.Key] = indexVal
+					dataKeys[kvWrite.Key] = transactions
 
 					updatedVersionsBytes := util.EncodeOrderPreservingVarUint64(versions)
 					err = d.levelDB.Put(GIkey, updatedVersionsBytes, true)
@@ -170,6 +166,7 @@ func (d *DB) Commit(block *common.Block) error {
 
 					minVersion := versions - uint64(len(transactions)) + 1
 					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
+					indexVal := constructNewIndex(blockNo, transactions)
 					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", kvWrite.Key, minVersion, blockNo, transactions)
 					dbBatch.Put(dataKey, indexVal)
 				}
