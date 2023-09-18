@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -83,6 +84,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
+	dataKeys := make(map[string]newIndex)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -137,29 +139,34 @@ func (d *DB) Commit(block *common.Block) error {
 					)
 					// Get returns nil if key not found
 					GIkey := []byte("_" + kvWrite.Key)
-					GIbytes, err := d.levelDB.Get(GIkey)
+					versionsBytes, err := d.levelDB.Get(GIkey)
 					if err != nil {
 						return err
 					}
-					if GIbytes != nil {
-						versions, transactions, err = decodeNewIndex(GIbytes)
+					if versionsBytes != nil {
+						versions, _, err = util.DecodeOrderPreservingVarUint64(versionsBytes)
 						if err != nil {
 							return err
+						}
+						indexVal, present := dataKeys[kvWrite.Key]
+						if present {
+							_, transactions, err = decodeNewIndex(indexVal)
+							if err != nil {
+								return err
+							}
 						}
 					}
 					versions++
 					transactions = append(transactions, tranNo)
 
-					GIval := constructNewIndex(versions, transactions)
-					if err != nil {
-						return err
-					}
-					err = d.levelDB.Put(GIkey, GIval, true)
-					if err != nil {
-						return err
-					}
-
 					indexVal := constructNewIndex(blockNo, transactions)
+					dataKeys[kvWrite.Key] = indexVal
+
+					updatedVersionsBytes := util.EncodeOrderPreservingVarUint64(versions)
+					err = d.levelDB.Put(GIkey, updatedVersionsBytes, true)
+					if err != nil {
+						return err
+					}
 
 					minVersion := versions - uint64(len(transactions)) + 1
 					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
