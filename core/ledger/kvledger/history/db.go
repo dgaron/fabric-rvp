@@ -11,7 +11,6 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -55,9 +54,8 @@ func (p *DBProvider) MarkStartingSavepoint(name string, savepoint *version.Heigh
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
-		levelDB:  p.leveldbProvider.GetDBHandle(name),
-		name:     name,
-		versions: make(map[string][]byte),
+		levelDB: p.leveldbProvider.GetDBHandle(name),
+		name:    name,
 	}
 }
 
@@ -73,9 +71,8 @@ func (p *DBProvider) Drop(channelName string) error {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB  *leveldbhelper.DBHandle
-	name     string
-	versions map[string][]byte
+	levelDB *leveldbhelper.DBHandle
+	name    string
 }
 
 // Commit implements method in HistoryDB interface
@@ -86,7 +83,6 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
-	dataKeys := make(map[string]newIndex)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -139,29 +135,33 @@ func (d *DB) Commit(block *common.Block) error {
 						versions     uint64
 						transactions []uint64
 					)
-					versionsBytes, present := d.versions[kvWrite.Key]
-					if present {
-						versions, _, err = util.DecodeOrderPreservingVarUint64(versionsBytes)
+					// Get returns nil if key not found
+					GIkey := []byte("_" + kvWrite.Key)
+					GIbytes, err := d.levelDB.Get(GIkey)
+					if err != nil {
+						return err
+					}
+					if GIbytes != nil {
+						versions, transactions, err = decodeNewIndex(GIbytes)
 						if err != nil {
 							return err
-						}
-						indexVal, present := dataKeys[kvWrite.Key]
-						if present {
-							_, transactions, err = decodeNewIndex(indexVal)
-							if err != nil {
-								return err
-							}
 						}
 					}
 					versions++
 					transactions = append(transactions, tranNo)
-					minVersion := versions - uint64(len(transactions)) + 1
 
-					d.versions[kvWrite.Key] = util.EncodeOrderPreservingVarUint64(versions)
+					GIval := constructNewIndex(versions, transactions)
+					if err != nil {
+						return err
+					}
+					err = d.levelDB.Put(GIkey, GIval, true)
+					if err != nil {
+						return err
+					}
 
 					indexVal := constructNewIndex(blockNo, transactions)
-					dataKeys[kvWrite.Key] = indexVal
 
+					minVersion := versions - uint64(len(transactions)) + 1
 					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
 					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", kvWrite.Key, minVersion, blockNo, transactions)
 					dbBatch.Put(dataKey, indexVal)
