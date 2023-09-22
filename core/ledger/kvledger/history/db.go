@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	"encoding/hex"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
@@ -140,8 +138,7 @@ func (d *DB) Commit(block *common.Block) error {
 						transactions []uint64
 					)
 					// Get returns nil if key not found
-
-					GIkey, _ := hex.DecodeString(kvWrite.Key[2:])
+					GIkey := []byte("_" + kvWrite.Key)
 
 					versionsBytes, err := d.levelDB.Get(GIkey)
 					if err != nil {
