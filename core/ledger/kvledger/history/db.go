@@ -133,8 +133,9 @@ func (d *DB) Commit(block *common.Block) error {
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					var (
-						versions   uint64
-						minVersion uint64
+						versions     uint64
+						minVersion   uint64
+						transactions []uint64
 					)
 					key := kvWrite.Key
 
@@ -149,14 +150,15 @@ func (d *DB) Commit(block *common.Block) error {
 						if err != nil {
 							return err
 						}
-					}
-					transactions, found := dataKeys[key]
-					// If found in map, transactions list is current & need not be read & decoded from DB
-					if !found {
-						indexVal := dbItr.Value()
-						_, transactions, err = decodeNewIndex(indexVal)
-						if err != nil {
-							return err
+						var found bool
+						transactions, found = dataKeys[key]
+						// If found in map, transactions list is current & need not be read & decoded from DB
+						if !found {
+							indexVal := dbItr.Value()
+							_, transactions, err = decodeNewIndex(indexVal)
+							if err != nil {
+								return err
+							}
 						}
 					}
 					dbItr.Release()
