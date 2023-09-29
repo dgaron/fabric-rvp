@@ -133,8 +133,8 @@ func (d *DB) Commit(block *common.Block) error {
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					var (
-						versions     uint64
-						transactions []uint64
+						versions   uint64
+						minVersion uint64
 					)
 					key := kvWrite.Key
 
@@ -143,30 +143,34 @@ func (d *DB) Commit(block *common.Block) error {
 					if err != nil {
 						return err
 					}
+
 					if dbItr.Last() {
 						keyBytes := dbItr.Key()
-						minVersion, err := rangeScan.decodeMinVersion(keyBytes)
+						minVersion, err = rangeScan.decodeMinVersion(keyBytes)
 						if err != nil {
 							return err
 						}
+					}
+					transactions, found := dataKeys[key]
+					// If found in map, transactions list is current & need not be read & decoded from DB
+					if !found {
 						indexVal := dbItr.Value()
-						// lastEntryTransactions may or may not be from current block, so we can't just use the dataKeys map
-						_, lastEntryTransactions, err := decodeNewIndex(indexVal)
+						_, transactions, err = decodeNewIndex(indexVal)
 						if err != nil {
 							return err
 						}
-						versions = minVersion + uint64(len(lastEntryTransactions))
 					}
 					dbItr.Release()
 
-					transactions = dataKeys[key]
+					versions = minVersion + uint64(len(transactions))
 
+					// Update versions & transactions list
 					versions++
 					transactions = append(transactions, tranNo)
 
 					dataKeys[key] = transactions
 
-					minVersion := versions - uint64(len(transactions)) + 1
+					minVersion = versions - uint64(len(transactions)) + 1
 					dataKey := constructDataKey(ns, key, minVersion)
 					indexVal := constructNewIndex(blockNo, transactions)
 					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", key, minVersion, blockNo, transactions)
