@@ -145,16 +145,16 @@ func (d *DB) Commit(block *common.Block) error {
 					if err != nil {
 						return err
 					}
+					var previousTxInCurrentBlock bool
+					transactions, previousTxInCurrentBlock = dataKeys[key]
 					if dbItr.Last() {
 						keyBytes := dbItr.Key()
 						minVersion, err = rangeScan.decodeMinVersion(keyBytes)
 						if err != nil {
 							return err
 						}
-						var found bool
-						transactions, found = dataKeys[key]
 						// If found in map, transactions list is current & need not be read & decoded from DB
-						if !found {
+						if !previousTxInCurrentBlock {
 							indexVal := dbItr.Value()
 							_, lastBlockTransactions, err = decodeNewIndex(indexVal)
 							if err != nil {
