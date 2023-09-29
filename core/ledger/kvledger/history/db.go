@@ -145,11 +145,11 @@ func (d *DB) Commit(block *common.Block) error {
 					)
 					key := kvWrite.Key
 
-					cachedKeyData, found := dataKeys[key]
-					if found {
-						transactions = cachedKeyData.Transactions
-						priorVersions = cachedKeyData.PriorVersions
-					} else {
+					currentKeyInfo, hasHistoryInCurrentBlock := dataKeys[key]
+					if hasHistoryInCurrentBlock {
+						transactions = currentKeyInfo.Transactions
+						priorVersions = currentKeyInfo.PriorVersions
+					} else { // currentKeyInfo will be nil in this case
 						rangeScan := constructRangeScan(ns, key)
 						dbItr, err := d.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 						if err != nil {
