@@ -164,6 +164,8 @@ func (d *DB) Commit(block *common.Block) error {
 						} else {
 							versions = minVersion + uint64(len(transactions))
 						}
+					} else {
+						versions = uint64(len(transactions))
 					}
 					dbItr.Release()
 
