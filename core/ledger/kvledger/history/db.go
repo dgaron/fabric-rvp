@@ -133,45 +133,37 @@ func (d *DB) Commit(block *common.Block) error {
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					var (
-						versions              uint64
-						minVersion            uint64
-						transactions          []uint64
-						lastBlockTransactions []uint64
+						versions      uint64
+						priorVersions uint64
+						minVersion    uint64
 					)
 					key := kvWrite.Key
+
+					transactions := dataKeys[key]
 
 					rangeScan := constructRangeScan(ns, key)
 					dbItr, err := d.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 					if err != nil {
 						return err
 					}
-					var previousTxInCurrentBlock bool
-					transactions, previousTxInCurrentBlock = dataKeys[key]
 					if dbItr.Last() {
 						keyBytes := dbItr.Key()
-						minVersion, err = rangeScan.decodeMinVersion(keyBytes)
+						lastBlockMinVersion, err := rangeScan.decodeMinVersion(keyBytes)
 						if err != nil {
 							return err
 						}
-						// If found in map, transactions list is current & need not be read & decoded from DB
-						if !previousTxInCurrentBlock {
-							indexVal := dbItr.Value()
-							_, lastBlockTransactions, err = decodeNewIndex(indexVal)
-							if err != nil {
-								return err
-							}
-							versions = minVersion + uint64(len(lastBlockTransactions))
-						} else {
-							versions = minVersion + uint64(len(transactions))
+						indexVal := dbItr.Value()
+						_, lastBlockTransactions, err := decodeNewIndex(indexVal)
+						if err != nil {
+							return err
 						}
-					} else {
-						versions = uint64(len(transactions))
+						priorVersions = lastBlockMinVersion + uint64(len(lastBlockTransactions)) - 1
 					}
 					dbItr.Release()
 
 					// Update versions & transactions list
-					versions++
 					transactions = append(transactions, tranNo)
+					versions += priorVersions + uint64(len(transactions))
 
 					dataKeys[key] = transactions
 
