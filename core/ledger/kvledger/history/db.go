@@ -143,7 +143,6 @@ func (d *DB) Commit(block *common.Block) error {
 					if err != nil {
 						return err
 					}
-
 					if dbItr.Last() {
 						keyBytes := dbItr.Key()
 						minVersion, err = rangeScan.decodeMinVersion(keyBytes)
