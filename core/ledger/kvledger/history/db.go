@@ -27,6 +27,11 @@ type DBProvider struct {
 	leveldbProvider *leveldbhelper.Provider
 }
 
+type txPriorVersions struct {
+	Transactions  []uint64
+	PriorVersions uint64
+}
+
 // NewDBProvider instantiates DBProvider
 func NewDBProvider(path string) (*DBProvider, error) {
 	logger.Debugf("constructing HistoryDBProvider dbPath=%s", path)
@@ -83,7 +88,7 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
-	dataKeys := make(map[string][]uint64)
+	dataKeys := make(map[string]txPriorVersions)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -134,38 +139,42 @@ func (d *DB) Commit(block *common.Block) error {
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					var (
 						versions      uint64
+						transactions  []uint64
 						priorVersions uint64
 						minVersion    uint64
 					)
 					key := kvWrite.Key
 
-					transactions := dataKeys[key]
-
-					rangeScan := constructRangeScan(ns, key)
-					dbItr, err := d.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
-					if err != nil {
-						return err
-					}
-					if dbItr.Last() {
-						keyBytes := dbItr.Key()
-						lastBlockMinVersion, err := rangeScan.decodeMinVersion(keyBytes)
+					cachedKeyData, found := dataKeys[key]
+					if found {
+						transactions = cachedKeyData.Transactions
+						priorVersions = cachedKeyData.PriorVersions
+					} else {
+						rangeScan := constructRangeScan(ns, key)
+						dbItr, err := d.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 						if err != nil {
 							return err
 						}
-						indexVal := dbItr.Value()
-						_, lastBlockTransactions, err := decodeNewIndex(indexVal)
-						if err != nil {
-							return err
+						if dbItr.Last() {
+							keyBytes := dbItr.Key()
+							lastBlockMinVersion, err := rangeScan.decodeMinVersion(keyBytes)
+							if err != nil {
+								return err
+							}
+							indexVal := dbItr.Value()
+							_, lastBlockTransactions, err := decodeNewIndex(indexVal)
+							if err != nil {
+								return err
+							}
+							priorVersions = lastBlockMinVersion + uint64(len(lastBlockTransactions)) - 1
 						}
-						priorVersions = lastBlockMinVersion + uint64(len(lastBlockTransactions)) - 1
+						dbItr.Release()
 					}
-					dbItr.Release()
-
 					// Update versions & transactions list
 					transactions = append(transactions, tranNo)
 					versions += priorVersions + uint64(len(transactions))
 
-					dataKeys[key] = transactions
+					dataKeys[key] = txPriorVersions{Transactions: transactions, PriorVersions: priorVersions}
 
 					minVersion = versions - uint64(len(transactions)) + 1
 					dataKey := constructDataKey(ns, key, minVersion)
