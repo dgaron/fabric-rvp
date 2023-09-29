@@ -145,10 +145,17 @@ func (d *DB) Commit(block *common.Block) error {
 					}
 					if dbItr.Last() {
 						keyBytes := dbItr.Key()
-						versions, err = rangeScan.decodeMinVersion(keyBytes)
+						minVersion, err := rangeScan.decodeMinVersion(keyBytes)
 						if err != nil {
 							return err
 						}
+						indexVal := dbItr.Value()
+						// lastEntryTransactions may or may not be from current block, so we can't just use the dataKeys map
+						_, lastEntryTransactions, err := decodeNewIndex(indexVal)
+						if err != nil {
+							return err
+						}
+						versions = minVersion + uint64(len(lastEntryTransactions))
 					}
 					dbItr.Release()
 
