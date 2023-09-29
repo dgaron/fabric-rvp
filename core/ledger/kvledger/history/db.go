@@ -11,7 +11,6 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -137,38 +136,33 @@ func (d *DB) Commit(block *common.Block) error {
 						versions     uint64
 						transactions []uint64
 					)
-					// Get returns nil if key not found
-					GIkey := []byte("_" + kvWrite.Key)
+					key := kvWrite.Key
 
-					versionsBytes, err := d.levelDB.Get(GIkey)
+					rangeScan := constructRangeScan(ns, key)
+					dbItr, err := d.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
 					if err != nil {
 						return err
 					}
-					if versionsBytes != nil {
-						versions, _, err = util.DecodeOrderPreservingVarUint64(versionsBytes)
+					if dbItr.Last() {
+						keyBytes := dbItr.Key()
+						versions, err = rangeScan.decodeMinVersion(keyBytes)
 						if err != nil {
 							return err
 						}
-						recordedTransactions, present := dataKeys[kvWrite.Key]
-						if present {
-							transactions = recordedTransactions
-						}
 					}
+					dbItr.Release()
+
+					transactions = dataKeys[key]
+
 					versions++
 					transactions = append(transactions, tranNo)
 
-					dataKeys[kvWrite.Key] = transactions
-
-					updatedVersionsBytes := util.EncodeOrderPreservingVarUint64(versions)
-					err = d.levelDB.Put(GIkey, updatedVersionsBytes, true)
-					if err != nil {
-						return err
-					}
+					dataKeys[key] = transactions
 
 					minVersion := versions - uint64(len(transactions)) + 1
-					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
+					dataKey := constructDataKey(ns, key, minVersion)
 					indexVal := constructNewIndex(blockNo, transactions)
-					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", kvWrite.Key, minVersion, blockNo, transactions)
+					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", key, minVersion, blockNo, transactions)
 					dbBatch.Put(dataKey, indexVal)
 				}
 			}
