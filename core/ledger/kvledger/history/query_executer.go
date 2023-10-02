@@ -259,7 +259,15 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		if err != nil {
 			return nil, err
 		}
-		txIndex = int(end - firstVersionInBlock)
+		lastVersionInBlock := firstVersionInBlock + uint64(len(transactions)-1)
+		if lastVersionInBlock < start {
+			return nil, errors.Errorf("Start: %d is greater than the last existing version: %d", start, lastVersionInBlock)
+		}
+		if end > lastVersionInBlock {
+			txIndex = int(len(transactions) - 1)
+		} else {
+			txIndex = int(end - firstVersionInBlock)
+		}
 	} else {
 		txIndex = -1
 	}
