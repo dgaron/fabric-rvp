@@ -298,10 +298,6 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	lastVersionInBlock := firstVersionInBlock + uint64(len(scanner.transactions)-1)
-	if lastVersionInBlock < scanner.start {
-		return nil, nil
-	}
 	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
 	logger.Debugf("First version in block: %d, Current version: %d\n", firstVersionInBlock, currentVersionNum)
 	if currentVersionNum < scanner.start {
