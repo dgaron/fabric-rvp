@@ -259,7 +259,12 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		if err != nil {
 			return nil, err
 		}
-		txIndex = int(end - firstVersionInBlock)
+		lastVersionInBlock := firstVersionInBlock + uint64(len(transactions)-1)
+		if end > lastVersionInBlock {
+			txIndex = int(len(transactions) - 1)
+		} else {
+			txIndex = int(end - firstVersionInBlock)
+		}
 	} else {
 		txIndex = -1
 	}
@@ -289,6 +294,10 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	firstVersionInBlock, err := scanner.rangeScan.decodeMinVersion(historyKey)
 	if err != nil {
 		return nil, err
+	}
+	lastVersionInBlock := firstVersionInBlock + uint64(len(scanner.transactions)-1)
+	if lastVersionInBlock < scanner.start {
+		return nil, nil
 	}
 	currentVersionNum := firstVersionInBlock + uint64(scanner.txIndex)
 	logger.Debugf("First version in block: %d, Current version: %d\n", firstVersionInBlock, currentVersionNum)
