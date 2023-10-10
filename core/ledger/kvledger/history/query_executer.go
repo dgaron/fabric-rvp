@@ -236,6 +236,21 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
 
+	GIkey := []byte("_" + key)
+	versionsBytes, err := q.levelDB.Get(GIkey)
+	if err != nil {
+		return nil, errors.Errorf("Error reading from history database for key: %s", key)
+	}
+	if versionsBytes != nil {
+		maxVersion, _, err := util.DecodeOrderPreservingVarUint64(versionsBytes)
+		if err != nil {
+			return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
+		}
+		if maxVersion < start {
+			return nil, errors.Errorf("Start: %d is greater than the last existing version: %d", start, maxVersion)
+		}
+	}
+
 	rangeScan := constructRangeScan(namespace, key)
 	endKey := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(end+1)...)
 
@@ -260,9 +275,6 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 			return nil, err
 		}
 		lastVersionInBlock := firstVersionInBlock + uint64(len(transactions)-1)
-		if lastVersionInBlock < start {
-			return nil, errors.Errorf("Start: %d is greater than the last existing version: %d", start, lastVersionInBlock)
-		}
 		if end > lastVersionInBlock {
 			txIndex = int(len(transactions) - 1)
 		} else {
