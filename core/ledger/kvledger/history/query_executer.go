@@ -7,6 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"fmt"
+	"os"
+	"time"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
@@ -39,6 +43,10 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
+	_, err = os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
+	}
 	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, nil, -1}, nil
 }
 
@@ -58,6 +66,13 @@ type historyScanner struct {
 // It decodes blockNumTranNumBytes to get blockNum and tranNum,
 // loads the block:tran from block storage, finds the key and returns the result.
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
+	// Open time log file
+	time_file, err := os.OpenFile("/var/read_times.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+	defer time_file.Close()
+	index_start := time.Now()
 	if scanner.txIndex <= -1 {
 		if !scanner.dbItr.Prev() {
 			return nil, nil
@@ -76,9 +91,11 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	tranNum := scanner.transactions[scanner.txIndex]
 	scanner.txIndex--
 
+	index_time := time.Since(index_start).Microseconds()
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
+	disk_start := time.Now()
 	// Get the transaction from block storage that is associated with this history record
 	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
@@ -90,6 +107,9 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	disk_time := time.Since(disk_start).Microseconds()
+	time_string := fmt.Sprint("Time to read index: ", index_time, "\nTime to read disk: ", disk_time, "\n")
+	time_file.Write([]byte(time_string))
 	if queryResult == nil {
 		// should not happen, but make sure there is inconsistency between historydb and statedb
 		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.key, blockNum, tranNum)
@@ -251,6 +271,11 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		}
 	}
 
+	_, err = os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
+	}
+
 	rangeScan := constructRangeScan(namespace, key)
 	endKey := append(rangeScan.startKey, util.EncodeOrderPreservingVarUint64(end+1)...)
 
@@ -288,6 +313,13 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
+	// Open time log file
+	time_file, err := os.OpenFile("/var/read_times.txt", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+	defer time_file.Close()
+	index_start := time.Now()
 	if scanner.txIndex <= -1 {
 		if !scanner.dbItr.Prev() {
 			return nil, nil
@@ -321,9 +353,11 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	tranNum := scanner.transactions[scanner.txIndex]
 	scanner.txIndex--
 
+	index_time := time.Since(index_start).Microseconds()
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n, firstVersionInBlock: %d, currentVersion: %d\n",
 		scanner.namespace, scanner.key, blockNum, tranNum, firstVersionInBlock, currentVersionNum)
 
+	disk_start := time.Now()
 	// Get the transaction from block storage that is associated with this history record
 	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
@@ -335,6 +369,9 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	disk_time := time.Since(disk_start).Microseconds()
+	time_string := fmt.Sprint("Time to read index: ", index_time, "\nTime to read disk: ", disk_time, "\n")
+	time_file.Write([]byte(time_string))
 	if queryResult == nil {
 		// should not happen, but make sure there is inconsistency between historydb and statedb
 		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.key, blockNum, tranNum)
