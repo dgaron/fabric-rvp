@@ -35,6 +35,10 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if err != nil {
 		return nil, err
 	}
+	_, err = os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
+	}
 
 	// By default, dbItr is in the orderer of oldest to newest and its cursor is at the beginning of the entries.
 	// Need to call Last() and Next() to move the cursor to the end of the entries so that we can iterate
@@ -123,6 +127,10 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			keyMap[key] = keyData{rangeScan, dbItr}
 			validKeys = append(validKeys, key)
 		}
+	}
+	_, err := os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
 	}
 	scanner := &multipleHistoryScanner{namespace, validKeys, keyMap, q.blockStore, 0}
 	return scanner, nil
@@ -227,6 +235,10 @@ type versionScanner struct {
 func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
 	if end < start {
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
+	}
+	_, err := os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
 	}
 	rangeScan := constructRangeScan(namespace, key)
 	dbItr, err := q.levelDB.GetIterator(rangeScan.startKey, rangeScan.endKey)
