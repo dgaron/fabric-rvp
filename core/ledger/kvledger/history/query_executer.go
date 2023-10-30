@@ -43,6 +43,10 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if dbItr.Last() {
 		dbItr.Next()
 	}
+	_, err = os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
+	}
 	return &historyScanner{rangeScan, namespace, key, dbItr, q.blockStore, 0, nil, -1}, nil
 }
 
@@ -250,6 +254,10 @@ type versionScanner struct {
 func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error) {
 	if end < start {
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
+	}
+	_, err := os.Create("/var/read_times.txt")
+	if err != nil {
+		return nil, err
 	}
 
 	rangeScan := constructRangeScan(namespace, key)
