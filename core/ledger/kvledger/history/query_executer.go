@@ -81,7 +81,7 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	index_time := time.Since(index_start).Milliseconds()
+	index_time := time.Since(index_start).Microseconds()
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
@@ -97,7 +97,7 @@ func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	disk_time := time.Since(disk_start).Milliseconds()
+	disk_time := time.Since(disk_start).Microseconds()
 	time_string := fmt.Sprint("Time to read index: ", index_time, "\nTime to read disk: ", disk_time, "\n")
 	time_file.Write([]byte(time_string))
 
@@ -184,7 +184,7 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	index_time := time.Since(index_start).Milliseconds()
+	index_time := time.Since(index_start).Microseconds()
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, key, blockNum, tranNum)
 
@@ -200,7 +200,7 @@ func (scanner *multipleHistoryScanner) Next() (commonledger.QueryResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	disk_time := time.Since(disk_start).Milliseconds()
+	disk_time := time.Since(disk_start).Microseconds()
 	time_string := fmt.Sprint("Time to read index: ", index_time, "\nTime to read disk: ", disk_time, "\n")
 	time_file.Write([]byte(time_string))
 
@@ -279,7 +279,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	index_time := time.Since(index_start).Milliseconds()
+	index_time := time.Since(index_start).Microseconds()
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
 
@@ -295,7 +295,7 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	disk_time := time.Since(disk_start).Milliseconds()
+	disk_time := time.Since(disk_start).Microseconds()
 	time_string := fmt.Sprint("Time to read index: ", index_time, "\nTime to read disk: ", disk_time, "\n")
 	time_file.Write([]byte(time_string))
 	if queryResult == nil {
