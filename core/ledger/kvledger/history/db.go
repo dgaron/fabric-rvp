@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -54,9 +55,8 @@ func (p *DBProvider) MarkStartingSavepoint(name string, savepoint *version.Heigh
 // GetDBHandle gets the handle to a named database
 func (p *DBProvider) GetDBHandle(name string) *DB {
 	return &DB{
-		levelDB:     p.leveldbProvider.GetDBHandle(name),
-		name:        name,
-		globalIndex: make(map[string][]byte),
+		levelDB: p.leveldbProvider.GetDBHandle(name),
+		name:    name,
 	}
 }
 
@@ -72,9 +72,8 @@ func (p *DBProvider) Drop(channelName string) error {
 
 // DB maintains and provides access to history data for a particular channel
 type DB struct {
-	levelDB     *leveldbhelper.DBHandle
-	name        string
-	globalIndex map[string][]byte
+	levelDB *leveldbhelper.DBHandle
+	name    string
 }
 
 // Commit implements method in HistoryDB interface
@@ -139,20 +138,21 @@ func (d *DB) Commit(block *common.Block) error {
 						numVersions  uint64
 						transactions []uint64
 					)
-					globalIndexBytes, present := d.globalIndex[kvWrite.Key]
-					if present {
-						indexVal, present := dataKeys[kvWrite.Key]
+					// Get returns nil if key not found
+					GIkey := []byte("_" + kvWrite.Key)
+					prevBlockBytes, err := d.levelDB.Get(GIkey)
+					if err != nil {
+						return err
+					}
+					if prevBlockBytes != nil {
+						newIndexVal, present := dataKeys[kvWrite.Key]
 						if present {
-							// presence in dataKeys implies presence in globalIndex
-							prev, numVersions, transactions, err = decodeNewIndex(indexVal)
-							if err != nil {
-								return err
-							}
+							prev, numVersions, transactions, err = decodeNewIndex(newIndexVal)
 						} else {
-							prev, numVersions, err = decodeGlobalIndex(globalIndexBytes)
-							if err != nil {
-								return err
-							}
+							prev, _, err = util.DecodeOrderPreservingVarUint64(prevBlockBytes)
+						}
+						if err != nil {
+							return err
 						}
 					} else {
 						prev = blockNo
@@ -162,10 +162,14 @@ func (d *DB) Commit(block *common.Block) error {
 					transactions = append(transactions, tranNo)
 					numVersions++
 
-					d.globalIndex[kvWrite.Key] = constructGlobalIndex(blockNo, numVersions)
-
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
+
+					updatedLastBlockBytes := util.EncodeOrderPreservingVarUint64(blockNo)
+					err = d.levelDB.Put(GIkey, updatedLastBlockBytes, true)
+					if err != nil {
+						return err
+					}
 
 					dataKey := constructDataKey(ns, blockNo, kvWrite.Key)
 					dbBatch.Put(dataKey, indexVal)
@@ -194,7 +198,7 @@ func (d *DB) Commit(block *common.Block) error {
 
 // NewQueryExecutor implements method in HistoryDB interface
 func (d *DB) NewQueryExecutor(blockStore *blkstorage.BlockStore) (ledger.HistoryQueryExecutor, error) {
-	return &QueryExecutor{d.levelDB, blockStore, d.globalIndex}, nil
+	return &QueryExecutor{d.levelDB, blockStore}, nil
 }
 
 // GetLastSavepoint implements returns the height till which the history is present in the db

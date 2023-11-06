@@ -8,7 +8,6 @@ package history
 
 import (
 	"github.com/hyperledger/fabric/common/ledger/util"
-	"github.com/pkg/errors"
 )
 
 type dataKey []byte
@@ -56,30 +55,6 @@ func decodeNewIndex(newIndex newIndex) (uint64, uint64, []uint64, error) {
 		transactions = append(transactions, tx)
 	}
 	return prev, numVersions, transactions, nil
-}
-
-func constructGlobalIndex(prev uint64, numVersions uint64) globalIndex {
-	var k []byte
-	k = append(k, util.EncodeOrderPreservingVarUint64(prev)...)
-	k = append(k, util.EncodeOrderPreservingVarUint64(numVersions)...)
-	return globalIndex(k)
-}
-
-func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
-	prev, prevBytesConsumed, err := util.DecodeOrderPreservingVarUint64(globalIndex)
-	if err != nil {
-		return 0, 0, err
-	}
-	numVersions, versionBytesConsumed, err := util.DecodeOrderPreservingVarUint64(globalIndex[prevBytesConsumed:])
-	if err != nil {
-		return 0, 0, err
-	}
-	// The following error should never happen. Keep the check just in case there is some unknown bug.
-	if prevBytesConsumed+versionBytesConsumed != len(globalIndex) {
-		return 0, 0, errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumTranNumBytes (%d)",
-			prevBytesConsumed+versionBytesConsumed, len(globalIndex))
-	}
-	return prev, numVersions, nil
 }
 
 func constructDataKey(ns string, blocknum uint64, key string) dataKey {

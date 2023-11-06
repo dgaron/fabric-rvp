@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	protoutil "github.com/hyperledger/fabric/protoutil"
@@ -20,9 +21,8 @@ import (
 
 // QueryExecutor is a query executor against the LevelDB history DB
 type QueryExecutor struct {
-	levelDB     *leveldbhelper.DBHandle
-	blockStore  *blkstorage.BlockStore
-	globalIndex map[string][]byte
+	levelDB    *leveldbhelper.DBHandle
+	blockStore *blkstorage.BlockStore
 }
 
 // GetHistoryForKey implements method in interface `ledger.HistoryQueryExecutor`
@@ -32,16 +32,17 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 		return nil, err
 	}
 
-	globalIndexBytes, present := q.globalIndex[key]
-	if !present {
-		logger.Debugf("Key not present in GI. Initialized nil history scanner for key %s.", key)
-		// This scanner will return nil upon first call to Next()
-		return &historyScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1}, nil
-	}
-
-	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
+	GIkey := []byte("_" + key)
+	blockNumBytes, err := q.levelDB.Get(GIkey)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("Error reading from history database for key: %s", key)
+	}
+	if blockNumBytes == nil {
+		return nil, errors.Errorf("Error reading last block number for key: %s", key)
+	}
+	blockNum, _, err := util.DecodeOrderPreservingVarUint64(blockNumBytes)
+	if err != nil {
+		return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
 	}
 
 	dataKey := constructDataKey(namespace, blockNum, key)
@@ -265,16 +266,17 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, err
 	}
 
-	globalIndexBytes, present := q.globalIndex[key]
-	if !present {
-		logger.Debugf("Key not present in GI. Initialized nil version scanner for key %s.", key)
-		// This scanner will return nil upon first call to Next()
-		return &versionScanner{namespace, key, dbItr, q.blockStore, 0, nil, -1, start, end}, nil
-	}
-
-	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
+	GIkey := []byte("_" + key)
+	blockNumBytes, err := q.levelDB.Get(GIkey)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("Error reading from history database for key: %s", key)
+	}
+	if blockNumBytes == nil {
+		return nil, errors.Errorf("Error reading last block number for key: %s", key)
+	}
+	blockNum, _, err := util.DecodeOrderPreservingVarUint64(blockNumBytes)
+	if err != nil {
+		return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
 	}
 
 	dataKey := constructDataKey(namespace, blockNum, key)
