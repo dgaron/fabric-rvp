@@ -11,7 +11,6 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -140,16 +139,16 @@ func (d *DB) Commit(block *common.Block) error {
 					)
 					// Get returns nil if key not found
 					GIkey := []byte("_" + kvWrite.Key)
-					prevBlockBytes, err := d.levelDB.Get(GIkey)
+					globalIndexBytes, err := d.levelDB.Get(GIkey)
 					if err != nil {
 						return err
 					}
-					if prevBlockBytes != nil {
+					if globalIndexBytes != nil {
 						newIndexVal, present := dataKeys[kvWrite.Key]
 						if present {
 							prev, numVersions, transactions, err = decodeNewIndex(newIndexVal)
 						} else {
-							prev, _, err = util.DecodeOrderPreservingVarUint64(prevBlockBytes)
+							prev, numVersions, err = decodeGlobalIndex(globalIndexBytes)
 						}
 						if err != nil {
 							return err
@@ -165,8 +164,8 @@ func (d *DB) Commit(block *common.Block) error {
 					indexVal := constructNewIndex(prev, numVersions, transactions)
 					dataKeys[kvWrite.Key] = indexVal
 
-					updatedLastBlockBytes := util.EncodeOrderPreservingVarUint64(blockNo)
-					err = d.levelDB.Put(GIkey, updatedLastBlockBytes, true)
+					updatedGlobalIndexBytes := constructGlobalIndex(blockNo, numVersions)
+					err = d.levelDB.Put(GIkey, updatedGlobalIndexBytes, true)
 					if err != nil {
 						return err
 					}

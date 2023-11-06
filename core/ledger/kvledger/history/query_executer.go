@@ -11,7 +11,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	protoutil "github.com/hyperledger/fabric/protoutil"
@@ -33,14 +32,14 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	}
 
 	GIkey := []byte("_" + key)
-	blockNumBytes, err := q.levelDB.Get(GIkey)
+	globalIndexBytes, err := q.levelDB.Get(GIkey)
 	if err != nil {
 		return nil, errors.Errorf("Error reading from history database for key: %s", key)
 	}
-	if blockNumBytes == nil {
+	if globalIndexBytes == nil {
 		return nil, errors.Errorf("Error reading last block number for key: %s", key)
 	}
-	blockNum, _, err := util.DecodeOrderPreservingVarUint64(blockNumBytes)
+	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
 	if err != nil {
 		return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
 	}
@@ -267,14 +266,14 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 	}
 
 	GIkey := []byte("_" + key)
-	blockNumBytes, err := q.levelDB.Get(GIkey)
+	globalIndexBytes, err := q.levelDB.Get(GIkey)
 	if err != nil {
 		return nil, errors.Errorf("Error reading from history database for key: %s", key)
 	}
-	if blockNumBytes == nil {
+	if globalIndexBytes == nil {
 		return nil, errors.Errorf("Error reading last block number for key: %s", key)
 	}
-	blockNum, _, err := util.DecodeOrderPreservingVarUint64(blockNumBytes)
+	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
 	if err != nil {
 		return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
 	}
