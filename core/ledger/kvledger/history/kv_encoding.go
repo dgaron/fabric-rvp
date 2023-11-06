@@ -15,10 +15,6 @@ type dataKey []byte
 type newIndex []byte
 type globalIndex []byte
 
-type rangeScan struct {
-	startKey, endKey []byte
-}
-
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
@@ -58,6 +54,15 @@ func decodeNewIndex(newIndex newIndex) (uint64, uint64, []uint64, error) {
 	return prev, numVersions, transactions, nil
 }
 
+func constructDataKey(ns string, blocknum uint64, key string) dataKey {
+	k := append([]byte(ns), compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
+	k = append(k, compositeKeySep...)
+	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
+	k = append(k, []byte(key)...)
+	return dataKey(k)
+}
+
 func constructGlobalIndex(prev uint64, numVersions uint64) globalIndex {
 	var k []byte
 	k = append(k, util.EncodeOrderPreservingVarUint64(prev)...)
@@ -80,13 +85,4 @@ func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
 			prevBytesConsumed+versionBytesConsumed, len(globalIndex))
 	}
 	return prev, numVersions, nil
-}
-
-func constructDataKey(ns string, blocknum uint64, key string) dataKey {
-	k := append([]byte(ns), compositeKeySep...)
-	k = append(k, util.EncodeOrderPreservingVarUint64(blocknum)...)
-	k = append(k, compositeKeySep...)
-	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
-	k = append(k, []byte(key)...)
-	return dataKey(k)
 }
