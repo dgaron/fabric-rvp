@@ -15,10 +15,6 @@ type dataKey []byte
 type newIndex []byte
 type globalIndex []byte
 
-type rangeScan struct {
-	startKey, endKey []byte
-}
-
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
