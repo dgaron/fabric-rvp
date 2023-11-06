@@ -137,25 +137,28 @@ func (d *DB) Commit(block *common.Block) error {
 						numVersions  uint64
 						transactions []uint64
 					)
-					// Get returns nil if key not found
 					GIkey := []byte("_" + kvWrite.Key)
-					globalIndexBytes, err := d.levelDB.Get(GIkey)
-					if err != nil {
-						return err
-					}
-					if globalIndexBytes != nil {
-						newIndexVal, present := dataKeys[kvWrite.Key]
-						if present {
-							prev, numVersions, transactions, err = decodeNewIndex(newIndexVal)
-						} else {
-							prev, numVersions, err = decodeGlobalIndex(globalIndexBytes)
-						}
+					newIndexVal, present := dataKeys[kvWrite.Key]
+					if present {
+						prev, numVersions, transactions, err = decodeNewIndex(newIndexVal)
+					} else {
+						// Get returns nil if key not found
+						globalIndexBytes, err := d.levelDB.Get(GIkey)
 						if err != nil {
 							return err
 						}
-					} else {
-						prev = blockNo
-						// numVersions is initialized to 0
+						if globalIndexBytes != nil {
+							prev, numVersions, err = decodeGlobalIndex(globalIndexBytes)
+							if err != nil {
+								return err
+							}
+						} else {
+							prev = blockNo
+							// numVersions is initialized to 0
+						}
+					}
+					if err != nil {
+						return err
 					}
 
 					transactions = append(transactions, tranNo)
