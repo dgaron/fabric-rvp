@@ -177,6 +177,10 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 
 	}
 	scanner := &parallelHistoryScanner{namespace, validKeys, keyMap, q.blockStore, nil, 0, nil, 0}
+	err := scanner.nextBlock()
+	if err != nil {
+		return nil, err
+	}
 	return scanner, nil
 }
 
