@@ -153,8 +153,10 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 			return nil, errors.Errorf("Error reading from history database for key: %s", key)
 		}
 		if globalIndexBytes == nil {
-			return nil, errors.Errorf("Error reading last block number for key: %s", key)
-		}
+			continue
+		} // Else key is valid & we add it to the collection
+		validKeys = append(validKeys, key)
+
 		blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
 		if err != nil {
 			return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
