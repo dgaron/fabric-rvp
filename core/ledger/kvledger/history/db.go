@@ -174,6 +174,7 @@ func (d *DB) Commit(block *common.Block) error {
 					}
 
 					dataKey := constructDataKey(ns, blockNo, kvWrite.Key)
+					logger.Debugf("Added to dbBatch: %d~%s: %d~%d~%v\n", blockNo, kvWrite.Key, prev, numVersions, transactions)
 					dbBatch.Put(dataKey, indexVal)
 				}
 			}
