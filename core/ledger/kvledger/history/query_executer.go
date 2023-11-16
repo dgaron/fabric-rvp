@@ -120,6 +120,9 @@ func (scanner *historyScanner) Close() {
 }
 
 func (scanner *historyScanner) updateBlock() error {
+	if scanner.transactions == nil {
+		return nil
+	}
 	logger.Debugf("Updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, scanner.previousBlock)
 	scanner.currentBlock = scanner.previousBlock
 	dataKey := constructDataKey(scanner.namespace, scanner.previousBlock, scanner.key)
