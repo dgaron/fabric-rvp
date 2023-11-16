@@ -159,6 +159,7 @@ func (q *QueryExecutor) GetHistoryForKeys(namespace string, keys []string) (comm
 		if err != nil {
 			return nil, errors.Errorf("Error decoding lasts known version for key: %s", key)
 		}
+		logger.Debugf("Block num: %d found for key: %s\n", blockNum, key)
 
 		dataKey := constructDataKey(namespace, blockNum, key)
 		found := dbItr.Seek(dataKey)
