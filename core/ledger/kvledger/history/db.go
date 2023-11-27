@@ -138,27 +138,36 @@ func (d *DB) Commit(block *common.Block) error {
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					rangeScan := constructRangeScan(ns, kvWrite.Key)
-					keyData, present := keysData[kvWrite.Key]
-					if !present {
+					currentKeyData, present := keysData[kvWrite.Key]
+					var (
+						blockList []uint64
+						txList    [][]uint64
+						index     int
+					)
+					if present {
+						blockList = currentKeyData.blockList
+						txList = currentKeyData.txList
+						index = len(currentKeyData.txList) - 1
+					} else {
 						blockListBytes, err := d.levelDB.Get(rangeScan.blockKey)
 						if err != nil {
 							return err
 						}
 						if blockListBytes != nil {
-							keyData.blockList, err = decodeBlockList(blockListBytes)
+							blockList, err = decodeBlockList(blockListBytes)
 							if err != nil {
 								return err
 							}
 						}
-						keyData.blockList = append(keyData.blockList, blockNo)
-						encodedBlockList := constructBlockList(keyData.blockList)
+						blockList = append(blockList, blockNo)
+						encodedBlockList := constructBlockList(blockList)
 						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
 						// Appends empty list, updated below
-						keyData.txList = append(keyData.txList, []uint64{})
+						txList = append(txList, []uint64{})
 					}
-					index := len(keyData.txList) - 1
-					keyData.txList[index] = append(keyData.txList[index], tranNo)
-					encodedTxList := constructTxList(keyData.txList)
+					txList[index] = append(txList[index], tranNo)
+					keysData[kvWrite.Key] = keyData{blockList: blockList, txList: txList}
+					encodedTxList := constructTxList(txList)
 					dbBatch.Put(rangeScan.txKey, encodedTxList)
 				}
 			}
