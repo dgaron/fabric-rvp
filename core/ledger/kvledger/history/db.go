@@ -135,8 +135,8 @@ func (d *DB) Commit(block *common.Block) error {
 			// add a history record for each write
 			for _, nsRWSet := range txRWSet.NsRwSets {
 				ns := nsRWSet.NameSpace
-
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
+					rangeScan := constructRangeScan(ns, kvWrite.Key)
 					currentKeyData, present := keysData[kvWrite.Key]
 					var (
 						blockList []uint64
@@ -148,8 +148,7 @@ func (d *DB) Commit(block *common.Block) error {
 						txList = currentKeyData.txList
 						index = len(currentKeyData.txList) - 1
 					} else {
-						blockKey := constructBlockKey(ns, kvWrite.Key)
-						blockListBytes, err := d.levelDB.Get(blockKey)
+						blockListBytes, err := d.levelDB.Get(rangeScan.blockKey)
 						if err != nil {
 							return err
 						}
@@ -162,7 +161,7 @@ func (d *DB) Commit(block *common.Block) error {
 						blockList = append(blockList, blockNo)
 						encodedBlockList := constructBlockList(blockList)
 						logger.Debugf("Added to dbBatch for key: %s, blockList: %v", kvWrite.Key, blockList)
-						dbBatch.Put(blockKey, encodedBlockList)
+						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
 						// Appends empty list, updated below
 						txList = append(txList, []uint64{})
 					}
@@ -170,8 +169,7 @@ func (d *DB) Commit(block *common.Block) error {
 					keysData[kvWrite.Key] = keyData{blockList: blockList, txList: txList}
 					encodedTxList := constructTxList(txList)
 					logger.Debugf("Added to dbBatch for key: %s, txList: %v", kvWrite.Key, txList)
-					txKey := constructTxKey(ns, kvWrite.Key)
-					dbBatch.Put(txKey, encodedTxList)
+					dbBatch.Put(rangeScan.txKey, encodedTxList)
 				}
 			}
 

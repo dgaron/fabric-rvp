@@ -49,9 +49,12 @@ func constructRangeScan(ns string, key string) *rangeScan {
 	k = append(k, []byte(key)...)
 	k = append(k, compositeKeySep...)
 
+	blocks := append([]byte{}, k...)
+	trans := append([]byte{}, k...)
+
 	return &rangeScan{
-		blockKey: append(k, []byte("b")...),
-		txKey:    append(k, []byte("t")...),
+		blockKey: append(blocks, []byte("b")...),
+		txKey:    append(trans, []byte("t")...),
 	}
 }
 
