@@ -100,15 +100,6 @@ func decodeTxList(encodedTxList txList) ([][]uint64, error) {
 		transactions        []uint64
 	)
 	for i := 0; i < len(encodedTxList); i += lastTxBytesConsumed {
-		// Check for separator, indicating next transactions list
-		// Using a literal because compositeKeySep is a []byte and compositeKeySep[0] wasn't super clear
-		if encodedTxList[totalBytesConsumed] == 0x00 {
-			txList = append(txList, transactions)
-			transactions = []uint64{}
-			lastTxBytesConsumed = 1
-			totalBytesConsumed++
-			continue
-		}
 		tx, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(encodedTxList[totalBytesConsumed:])
 		lastTxBytesConsumed = bytesConsumed
 		totalBytesConsumed += bytesConsumed
@@ -116,7 +107,13 @@ func decodeTxList(encodedTxList txList) ([][]uint64, error) {
 			return nil, err
 		}
 		transactions = append(transactions, tx)
+		// Using literal byte value because compositeKeySep[0] was too unclear
+		if totalBytesConsumed == len(encodedTxList) || encodedTxList[totalBytesConsumed] == 0x00 {
+			txList = append(txList, transactions)
+			transactions = []uint64{}
+			totalBytesConsumed++
+			lastTxBytesConsumed++
+		}
 	}
-	txList = append(txList, transactions)
 	return txList, nil
 }
