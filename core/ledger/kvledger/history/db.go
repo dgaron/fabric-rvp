@@ -153,6 +153,8 @@ func (d *DB) Commit(block *common.Block) error {
 						keyData.blockList = append(keyData.blockList, blockNo)
 						encodedBlockList := constructBlockList(keyData.blockList)
 						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
+						// Appends empty list, updated below
+						keyData.txList = append(keyData.txList, []uint64{})
 					}
 					index := len(keyData.txList) - 1
 					keyData.txList[index] = append(keyData.txList[index], tranNo)
