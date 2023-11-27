@@ -161,6 +161,7 @@ func (d *DB) Commit(block *common.Block) error {
 						}
 						blockList = append(blockList, blockNo)
 						encodedBlockList := constructBlockList(blockList)
+						logger.Debugf("Added to dbBatch for key: %s, blockList: %v", kvWrite.Key, blockList)
 						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
 						// Appends empty list, updated below
 						txList = append(txList, []uint64{})
@@ -168,6 +169,7 @@ func (d *DB) Commit(block *common.Block) error {
 					txList[index] = append(txList[index], tranNo)
 					keysData[kvWrite.Key] = keyData{blockList: blockList, txList: txList}
 					encodedTxList := constructTxList(txList)
+					logger.Debugf("Added to dbBatch for key: %s, txList: %v", kvWrite.Key, txList)
 					dbBatch.Put(rangeScan.txKey, encodedTxList)
 				}
 			}
