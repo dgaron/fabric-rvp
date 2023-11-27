@@ -139,10 +139,7 @@ func (d *DB) Commit(block *common.Block) error {
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 					rangeScan := constructRangeScan(ns, kvWrite.Key)
 					keyData, present := keysData[kvWrite.Key]
-					if present {
-						index := len(keyData.txList) - 1
-						keyData.txList[index] = append(keyData.txList[index], tranNo)
-					} else {
+					if !present {
 						blockListBytes, err := d.levelDB.Get(rangeScan.blockKey)
 						if err != nil {
 							return err
@@ -154,11 +151,11 @@ func (d *DB) Commit(block *common.Block) error {
 							}
 						}
 						keyData.blockList = append(keyData.blockList, blockNo)
-						keyData.txList = append(keyData.txList, []uint64{tranNo})
-
 						encodedBlockList := constructBlockList(keyData.blockList)
 						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
 					}
+					index := len(keyData.txList) - 1
+					keyData.txList[index] = append(keyData.txList[index], tranNo)
 					encodedTxList := constructTxList(keyData.txList)
 					dbBatch.Put(rangeScan.txKey, encodedTxList)
 				}
