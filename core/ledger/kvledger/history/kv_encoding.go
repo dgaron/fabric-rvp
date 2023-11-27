@@ -65,9 +65,11 @@ func constructBlockList(blocks []uint64) blockList {
 
 func decodeBlockList(encodedBlockList blockList) ([]uint64, error) {
 	var blockList []uint64
+	var lastBlockBytesConsumed int
 	var totalBytesConsumed int
-	for i := 0; i < len(encodedBlockList); i += totalBytesConsumed {
+	for i := 0; i < len(encodedBlockList); i += lastBlockBytesConsumed {
 		blockNum, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(encodedBlockList[totalBytesConsumed:])
+		lastBlockBytesConsumed = bytesConsumed
 		totalBytesConsumed += bytesConsumed
 		if err != nil {
 			return nil, err
@@ -92,23 +94,29 @@ func constructTxList(transactionLists [][]uint64) txList {
 
 func decodeTxList(encodedTxList txList) ([][]uint64, error) {
 	var (
-		txList             [][]uint64
-		totalBytesConsumed int
-		transactions       []uint64
+		txList              [][]uint64
+		lastTxBytesConsumed int
+		totalBytesConsumed  int
+		transactions        []uint64
 	)
-	for i := 0; i < len(encodedTxList); i += totalBytesConsumed {
+	for i := 0; i < len(encodedTxList); i += lastTxBytesConsumed {
 		// Check for separator, indicating next transactions list
 		// Using a literal because compositeKeySep is a []byte and compositeKeySep[0] wasn't super clear
 		if encodedTxList[totalBytesConsumed] == 0x00 {
 			txList = append(txList, transactions)
 			transactions = []uint64{}
+			lastTxBytesConsumed = 1
+			totalBytesConsumed++
+			continue
 		}
 		tx, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(encodedTxList[totalBytesConsumed:])
+		lastTxBytesConsumed = bytesConsumed
 		totalBytesConsumed += bytesConsumed
 		if err != nil {
 			return nil, err
 		}
 		transactions = append(transactions, tx)
 	}
+	txList = append(txList, transactions)
 	return txList, nil
 }
