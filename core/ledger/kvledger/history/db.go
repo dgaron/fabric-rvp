@@ -148,6 +148,7 @@ func (d *DB) Commit(block *common.Block) error {
 						txList = currentKeyData.txList
 						index = len(currentKeyData.txList) - 1
 					} else {
+						// Retrieve and update block list from DB
 						blockListBytes, err := d.levelDB.Get(rangeScan.blockKey)
 						if err != nil {
 							return err
@@ -162,6 +163,17 @@ func (d *DB) Commit(block *common.Block) error {
 						encodedBlockList := constructBlockList(blockList)
 						logger.Debugf("Added to dbBatch for key: %s, blockList: %v", kvWrite.Key, blockList)
 						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
+						// Retrieve and update list of transaction lists from DB
+						txListBytes, err := d.levelDB.Get(rangeScan.blockKey)
+						if err != nil {
+							return err
+						}
+						if txListBytes != nil {
+							txList, err = decodeTxList(txListBytes)
+							if err != nil {
+								return err
+							}
+						}
 						// Appends empty list, updated below
 						txList = append(txList, []uint64{})
 					}
