@@ -141,12 +141,10 @@ func (d *DB) Commit(block *common.Block) error {
 					var (
 						blockList []uint64
 						txList    [][]uint64
-						index     int
 					)
 					if present {
 						blockList = currentKeyData.blockList
 						txList = currentKeyData.txList
-						index = len(currentKeyData.txList) - 1
 					} else {
 						// Retrieve and update block list from DB
 						blockListBytes, err := d.levelDB.Get(rangeScan.blockKey)
@@ -177,7 +175,8 @@ func (d *DB) Commit(block *common.Block) error {
 						// Appends empty list, updated below
 						txList = append(txList, []uint64{})
 					}
-					txList[index] = append(txList[index], tranNo)
+					lastIndex := len(txList) - 1
+					txList[lastIndex] = append(txList[lastIndex], tranNo)
 					keysData[kvWrite.Key] = keyData{blockList: blockList, txList: txList}
 					encodedTxList := constructTxList(txList)
 					logger.Debugf("Added to dbBatch for key: %s, txList: %v", kvWrite.Key, txList)
