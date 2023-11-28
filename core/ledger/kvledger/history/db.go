@@ -164,7 +164,7 @@ func (d *DB) Commit(block *common.Block) error {
 						logger.Debugf("Added to dbBatch for key: %s, blockList: %v", kvWrite.Key, blockList)
 						dbBatch.Put(rangeScan.blockKey, encodedBlockList)
 						// Retrieve and update list of transaction lists from DB
-						txListBytes, err := d.levelDB.Get(rangeScan.blockKey)
+						txListBytes, err := d.levelDB.Get(rangeScan.txKey)
 						if err != nil {
 							return err
 						}
