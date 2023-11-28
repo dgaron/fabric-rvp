@@ -220,18 +220,12 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	if scanner.current > scanner.end {
 		return nil, nil
 	}
+	if scanner.blockIndex >= len(scanner.blockList) {
+		return nil, nil
+	}
 
 	blockNum := scanner.blockList[scanner.blockIndex]
 	tranNum := scanner.txList[scanner.blockIndex][scanner.txIndex]
-
-	scanner.txIndex++
-	if scanner.txIndex >= len(scanner.txList[scanner.blockIndex]) {
-		scanner.blockIndex++
-		if scanner.blockIndex >= len(scanner.blockList) {
-			return nil, nil
-		}
-		scanner.txIndex = 0
-	}
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
 		scanner.namespace, scanner.key, blockNum, tranNum)
@@ -256,6 +250,11 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 		scanner.namespace, scanner.key, queryResult.(*queryresult.KeyModification).TxId)
 
 	scanner.current++
+	scanner.txIndex++
+	if scanner.txIndex >= len(scanner.txList[scanner.blockIndex]) {
+		scanner.blockIndex++
+		scanner.txIndex = 0
+	}
 	return queryResult, nil
 }
 
