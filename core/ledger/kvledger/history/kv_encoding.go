@@ -20,7 +20,6 @@ type rangeScan struct {
 var (
 	compositeKeySep = []byte{0x00} // used as a separator between different components of dataKey
 	savePointKey    = []byte{'s'}  // a single key in db for persisting savepoint
-	emptyValue      = []byte{}     // used to store as value for keys where only key needs to be stored (e.g., dataKeys)
 )
 
 func constructBlockKey(ns string, key string) dataKey {
@@ -41,20 +40,10 @@ func constructTxKey(ns string, key string) dataKey {
 	return dataKey(k)
 }
 
-// blockKey = namespace~len(key)~key~b
-// txKey = namespace~len(key)~key~t
 func constructRangeScan(ns string, key string) *rangeScan {
-	k := append([]byte(ns), compositeKeySep...)
-	k = append(k, util.EncodeOrderPreservingVarUint64(uint64(len(key)))...)
-	k = append(k, []byte(key)...)
-	k = append(k, compositeKeySep...)
-
-	blocks := append([]byte{}, k...)
-	trans := append([]byte{}, k...)
-
 	return &rangeScan{
-		blockKey: append(blocks, []byte("b")...),
-		txKey:    append(trans, []byte("t")...),
+		blockKey: constructBlockKey(ns, key),
+		txKey:    constructTxKey(ns, key),
 	}
 }
 
