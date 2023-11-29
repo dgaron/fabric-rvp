@@ -271,7 +271,9 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Error reading from history database for key: %s", key)
 	}
 	if globalIndexBytes == nil {
-		return nil, errors.Errorf("Error reading last block number for key: %s", key)
+		logger.Debugf("Key not present in GI. Initialized nil history scanner for key %s.", key)
+		// This scanner will return nil upon first call to Next()
+		return &historyScanner{namespace, key, dbItr, q.blockStore, 0, 0, nil, -1}, nil
 	}
 	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
 	if err != nil {
