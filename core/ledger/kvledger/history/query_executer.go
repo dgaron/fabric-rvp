@@ -401,7 +401,9 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Error reading from history database for key: %s", key)
 	}
 	if globalIndexBytes == nil {
-		return nil, errors.Errorf("Error reading last block number for key: %s", key)
+		logger.Debugf("Key not present in GI. Initialized nil version scanner for key %s.", key)
+		// This scanner will return nil upon first call to Next()
+		return &versionScanner{namespace, key, dbItr, q.blockStore, start, nil, -1, start, end}, nil
 	}
 	blockNum, _, err := decodeGlobalIndex(globalIndexBytes)
 	if err != nil {
@@ -464,7 +466,9 @@ type versionScanner struct {
 }
 
 func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
-
+	if scanner.indexVal == nil {
+		return nil, nil
+	}
 	_, numVersions, transactions, err := decodeNewIndex(scanner.indexVal)
 	if err != nil {
 		return nil, err
