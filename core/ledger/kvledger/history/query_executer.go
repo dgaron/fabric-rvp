@@ -30,6 +30,9 @@ func (q *QueryExecutor) GetHistoryForKey(namespace string, key string) (commonle
 	if err != nil {
 		return nil, err
 	}
+	if encodedBlockList == nil {
+		return &historyScanner{rangeScan, namespace, key, nil, nil, -1, -1, q.blockStore}, nil
+	}
 	encodedTxList, err := q.levelDB.Get(rangeScan.txKey)
 	if err != nil {
 		return nil, err
