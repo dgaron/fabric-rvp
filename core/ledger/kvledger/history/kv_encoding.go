@@ -89,6 +89,7 @@ func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
 	return prev, numVersions, nil
 }
 
+// namespace~SEP~block~SEP~len(key)~key
 func decodeDataKey(namespace string, dataKey dataKey) (uint64, string, error) {
 	var bytesConsumed int
 	startKey := append([]byte(namespace), compositeKeySep...)
@@ -98,7 +99,8 @@ func decodeDataKey(namespace string, dataKey dataKey) (uint64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	bytesConsumed += blockNumBytesConsumed
+	// Extra 1 is added for separator byte
+	bytesConsumed += blockNumBytesConsumed + 1
 
 	keyLen, keyLenBytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumKeyBytes[bytesConsumed:])
 	if err != nil {
