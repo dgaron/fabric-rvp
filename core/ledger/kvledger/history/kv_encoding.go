@@ -89,17 +89,31 @@ func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
 	return prev, numVersions, nil
 }
 
-func decodeKey(namespace string, dataKey dataKey) (string, error) {
+func decodeDataKey(namespace string, dataKey dataKey) (uint64, string, error) {
+	var bytesConsumed int
 	startKey := append([]byte(namespace), compositeKeySep...)
 	blockNumKeyBytes := bytes.TrimPrefix(dataKey, startKey)
 
-	keyLen, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumKeyBytes)
+	blockNum, blockNumBytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumKeyBytes)
 	if err != nil {
-		return "", err
+		return 0, "", err
 	}
+	bytesConsumed += blockNumBytesConsumed
+
+	keyLen, keyLenBytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumKeyBytes[bytesConsumed:])
+	if err != nil {
+		return 0, "", err
+	}
+	bytesConsumed += keyLenBytesConsumed
 
 	key := string(blockNumKeyBytes[bytesConsumed : bytesConsumed+int(keyLen)])
 	// keyLen bytes are used to store the key
+	bytesConsumed += int(keyLen)
 
-	return key, nil
+	if bytesConsumed != len(blockNumKeyBytes) {
+		return 0, "", errors.Errorf("number of decoded bytes (%d) is not equal to the length of blockNumKeyBytes (%d)",
+			bytesConsumed, len(blockNumKeyBytes))
+	}
+
+	return blockNum, key, nil
 }

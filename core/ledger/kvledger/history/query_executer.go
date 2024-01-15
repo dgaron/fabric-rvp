@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	protoutil "github.com/hyperledger/fabric/protoutil"
@@ -80,7 +81,10 @@ type historyScanner struct {
 func (scanner *historyScanner) Next() (commonledger.QueryResult, error) {
 	if scanner.txIndex == -1 {
 		oldBlockNum := scanner.currentBlock
-		scanner.updateBlock()
+		err := scanner.updateBlock()
+		if err != nil {
+			return nil, err
+		}
 		if scanner.currentBlock == oldBlockNum {
 			// Iterator exhausted
 			return nil, nil
@@ -319,7 +323,10 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		}
 
 		oldBlockNum := scanner.currentBlock
-		scanner.updateBlock()
+		err = scanner.updateBlock()
+		if err != nil {
+			return nil, err
+		}
 		if scanner.currentBlock == oldBlockNum {
 			// Iterator exhausted
 			scanner.txIndex = -1
@@ -356,7 +363,10 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 	}
 	if scanner.txIndex == -1 {
 		oldBlockNum := scanner.currentBlock
-		scanner.updateBlock()
+		err := scanner.updateBlock()
+		if err != nil {
+			return nil, err
+		}
 		if scanner.currentBlock == oldBlockNum {
 			// Iterator exhausted
 			return nil, nil
@@ -418,4 +428,158 @@ func (scanner *versionScanner) updateBlock() error {
 	scanner.txIndex = len(transactions) - 1
 	logger.Debugf("Fished updating block for key %s. currentBlock %d, previousBlock %d", scanner.key, scanner.currentBlock, prev)
 	return nil
+}
+
+/// NEW
+
+// GetUpdatesByBlockRange implements method in interface `ledger.HistoryQueryExecutor`
+func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, end uint64, updates uint64) (commonledger.ResultsIterator, error) {
+	if end < start {
+		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
+	}
+
+	if end <= 0 || start <= 0 {
+		return nil, errors.Errorf("Start: %d, end: %d cannot be less than 1", start, end)
+	}
+
+	// Create iterator over range from ns~startBlock to ns~endBlock
+	startKey := append([]byte(namespace), compositeKeySep...)
+	startKey = append(startKey, util.EncodeOrderPreservingVarUint64(start)...)
+
+	// End key is exclusive, end+1 results in range including all entries from 'start' to 'end'
+	endKey := append([]byte(namespace), compositeKeySep...)
+	endKey = append(endKey, util.EncodeOrderPreservingVarUint64(end+1)...)
+
+	dbItr, err := q.levelDB.GetIterator(startKey, endKey)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Debugf("Initialized block scanner over range from start: %d to end: %d seeking results with at least %d updates", start, end, updates)
+
+	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, end, updates, start, "", nil, -1}
+
+	err = scanner.countKeyUpdates()
+	if err != nil {
+		return nil, err
+	}
+
+	err = scanner.countKeyUpdates()
+	if err != nil {
+		return nil, err
+	}
+
+	return scanner, nil
+}
+
+// blockRangeScanner implements ResultsIterator for iterating through history results
+type blockRangeScanner struct {
+	namespace    string
+	dbItr        iterator.Iterator
+	blockStore   *blkstorage.BlockStore
+	keys         []string
+	start        uint64
+	end          uint64
+	updates      uint64
+	currentBlock uint64
+	currentKey   string
+	transactions []uint64
+	txIndex      int
+}
+
+func (scanner *blockRangeScanner) Next() (commonledger.QueryResult, error) {
+
+	if scanner.txIndex >= len(scanner.transactions) {
+		hasNext, key, err := scanner.nextKey()
+		if err != nil {
+			return nil, err
+		}
+		if !hasNext {
+			// Iterator exhausted
+			return nil, nil
+		}
+		scanner.currentKey = key
+	}
+
+	blockNum := scanner.currentBlock
+	tranNum := scanner.transactions[scanner.txIndex]
+	scanner.txIndex++
+
+	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
+		scanner.namespace, scanner.currentKey, blockNum, tranNum)
+
+	// Get the transaction from block storage that is associated with this history record
+	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
+	queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.currentKey)
+	if err != nil {
+		return nil, err
+	}
+	if queryResult == nil {
+		// should not happen, but make sure there is inconsistency between historydb and statedb
+		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.currentKey, blockNum, tranNum)
+		return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.currentKey, blockNum, tranNum)
+	}
+	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
+		scanner.namespace, scanner.currentKey, queryResult.(*queryresult.KeyModification).TxId)
+	return queryResult, nil
+}
+
+func (scanner *blockRangeScanner) Close() {
+	scanner.dbItr.Release()
+}
+
+func (scanner *blockRangeScanner) countKeyUpdates() error {
+	keyCounts := make(map[string]int)
+	for scanner.dbItr.Next() {
+		_, key, err := decodeDataKey(scanner.namespace, scanner.dbItr.Key())
+		if err != nil {
+			return err
+		}
+		keyCounts[key] += 1
+	}
+	for key, count := range keyCounts {
+		if count >= int(scanner.updates) {
+			scanner.keys = append(scanner.keys, key)
+		}
+	}
+	scanner.dbItr.First()
+	return nil
+}
+
+func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
+	for {
+		dataKey := scanner.dbItr.Key()
+		blockNum, key, err := decodeDataKey(scanner.namespace, dataKey)
+		if err != nil {
+			return false, "", err
+		}
+		scanner.currentBlock = blockNum
+		if contains(scanner.keys, key) {
+			indexVal := scanner.dbItr.Value()
+			_, _, transactions, err := decodeNewIndex(indexVal)
+			if err != nil {
+				return false, "", err
+			}
+			scanner.transactions = transactions
+			scanner.txIndex = 0
+			return true, key, nil
+		}
+		if !scanner.dbItr.Next() {
+			return false, "", nil
+		}
+	}
+}
+
+func contains(keys []string, searchKey string) bool {
+	for _, key := range keys {
+		if key == searchKey {
+			return true
+		}
+	}
+	return false
 }
