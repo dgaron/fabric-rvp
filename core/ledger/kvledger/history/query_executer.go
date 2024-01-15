@@ -457,12 +457,7 @@ func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, e
 
 	logger.Debugf("Initialized block scanner over range from start: %d to end: %d seeking results with at least %d updates", start, end, updates)
 
-	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, end, updates, start, "", nil, -1}
-
-	err = scanner.countKeyUpdates()
-	if err != nil {
-		return nil, err
-	}
+	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, end, updates, start, "", nil, 0}
 
 	err = scanner.countKeyUpdates()
 	if err != nil {
