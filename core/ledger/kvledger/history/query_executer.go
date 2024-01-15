@@ -457,9 +457,9 @@ func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, e
 
 	logger.Debugf("Initialized block scanner over range from start: %d to end: %d seeking results with at least %d updates", start, end, updates)
 
-	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, end, updates, start, "", nil, 0}
+	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, "", nil, 0}
 
-	err = scanner.countKeyUpdates()
+	err = scanner.countKeyUpdates(updates)
 	if err != nil {
 		return nil, err
 	}
@@ -473,9 +473,6 @@ type blockRangeScanner struct {
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
 	keys         []string
-	start        uint64
-	end          uint64
-	updates      uint64
 	currentBlock uint64
 	currentKey   string
 	transactions []uint64
@@ -528,8 +525,7 @@ func (scanner *blockRangeScanner) Close() {
 	scanner.dbItr.Release()
 }
 
-func (scanner *blockRangeScanner) countKeyUpdates() error {
-	logger.Debugf("Counting updates for keys in range: %d to %d\n", scanner.start, scanner.end)
+func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 	keyCounts := make(map[string]int)
 	for scanner.dbItr.Next() {
 		_, key, err := decodeDataKey(scanner.namespace, scanner.dbItr.Key())
@@ -540,16 +536,20 @@ func (scanner *blockRangeScanner) countKeyUpdates() error {
 	}
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
-		if count >= int(scanner.updates) {
+		if count >= int(updates) {
 			scanner.keys = append(scanner.keys, key)
 		}
 	}
 	scanner.dbItr.First()
+	scanner.dbItr.Prev()
 	return nil
 }
 
 func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
 	for {
+		if !scanner.dbItr.Next() {
+			return false, "", nil
+		}
 		dataKey := scanner.dbItr.Key()
 		blockNum, key, err := decodeDataKey(scanner.namespace, dataKey)
 		if err != nil {
@@ -566,9 +566,6 @@ func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
 			scanner.txIndex = 0
 			logger.Debugf("Next key: %s, appears in block %d transactions: %v\n", key, scanner.currentBlock, scanner.transactions)
 			return true, key, nil
-		}
-		if !scanner.dbItr.Next() {
-			return false, "", nil
 		}
 	}
 }
