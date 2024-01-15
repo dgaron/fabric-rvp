@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"bytes"
+
 	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/pkg/errors"
 )
@@ -85,4 +87,19 @@ func decodeGlobalIndex(globalIndex globalIndex) (uint64, uint64, error) {
 			prevBytesConsumed+versionBytesConsumed, len(globalIndex))
 	}
 	return prev, numVersions, nil
+}
+
+func decodeKey(namespace string, dataKey dataKey) (string, error) {
+	startKey := append([]byte(namespace), compositeKeySep...)
+	blockNumKeyBytes := bytes.TrimPrefix(dataKey, startKey)
+
+	keyLen, bytesConsumed, err := util.DecodeOrderPreservingVarUint64(blockNumKeyBytes)
+	if err != nil {
+		return "", err
+	}
+
+	key := string(blockNumKeyBytes[bytesConsumed : bytesConsumed+int(keyLen)])
+	// keyLen bytes are used to store the key
+
+	return key, nil
 }
