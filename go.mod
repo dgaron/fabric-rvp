@@ -77,6 +77,6 @@ require (
 
 replace github.com/onsi/gomega => github.com/onsi/gomega v1.9.0
 
-replace github.com/hyperledger/fabric-protos-go => github.com/dgaron/fabric-protos/bindings/go-apiv1 v0.0.0-20230728170636-34077e8f7509
+replace github.com/hyperledger/fabric-protos-go => github.com/dgaron/fabric-protos/bindings/go-apiv1 v0.0.0-20240115160558-3b75c98f2cd0
 
-replace github.com/hyperledger/fabric-chaincode-go => github.com/dgaron/fabric-chaincode-go v0.0.0-20230728171125-c298c3f19d55
+replace github.com/hyperledger/fabric-chaincode-go => github.com/dgaron/fabric-chaincode-go v0.0.0-20240115161810-5782ce1bfb44
