@@ -430,8 +430,6 @@ func (scanner *versionScanner) updateBlock() error {
 	return nil
 }
 
-/// NEW
-
 // GetUpdatesByBlockRange implements method in interface `ledger.HistoryQueryExecutor`
 func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, end uint64, updates uint64) (commonledger.ResultsIterator, error) {
 	if end < start {
@@ -532,7 +530,11 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 		if err != nil {
 			return err
 		}
-		keyCounts[key] += 1
+		_, _, transactions, err := decodeNewIndex(scanner.dbItr.Value())
+		if err != nil {
+			return err
+		}
+		keyCounts[key] += len(transactions)
 	}
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
