@@ -534,6 +534,7 @@ func (scanner *blockRangeScanner) Close() {
 }
 
 func (scanner *blockRangeScanner) countKeyUpdates() error {
+	logger.Debugf("Counting updates for keys in range: %d to %d\n", scanner.start, scanner.end)
 	keyCounts := make(map[string]int)
 	for scanner.dbItr.Next() {
 		_, key, err := decodeDataKey(scanner.namespace, scanner.dbItr.Key())
@@ -543,6 +544,7 @@ func (scanner *blockRangeScanner) countKeyUpdates() error {
 		keyCounts[key] += 1
 	}
 	for key, count := range keyCounts {
+		logger.Debugf("Key: %s updated %d times\n", key, count)
 		if count >= int(scanner.updates) {
 			scanner.keys = append(scanner.keys, key)
 		}
@@ -567,6 +569,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
 			}
 			scanner.transactions = transactions
 			scanner.txIndex = 0
+			logger.Debugf("Next key: %s, appears in block %d transactions: %v\n", key, scanner.currentBlock, scanner.transactions)
 			return true, key, nil
 		}
 		if !scanner.dbItr.Next() {
