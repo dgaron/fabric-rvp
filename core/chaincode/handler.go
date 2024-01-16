@@ -194,6 +194,8 @@ func (h *Handler) handleMessageReadyState(msg *pb.ChaincodeMessage) error {
 		go h.HandleTransaction(msg, h.HandleGetHistoryForKeys)
 	case pb.ChaincodeMessage_GET_VERSIONS_FOR_KEY:
 		go h.HandleTransaction(msg, h.HandleGetVersionsForKey)
+	case pb.ChaincodeMessage_GET_UPDATES_BY_BLOCK_RANGE:
+		go h.HandleTransaction(msg, h.HandleGetUpdatesByBlockRange)
 	case pb.ChaincodeMessage_QUERY_STATE_NEXT:
 		go h.HandleTransaction(msg, h.HandleQueryStateNext)
 	case pb.ChaincodeMessage_QUERY_STATE_CLOSE:
@@ -970,6 +972,43 @@ func (h *Handler) HandleGetVersionsForKey(msg *pb.ChaincodeMessage, txContext *T
 
 	txContext.InitializeQueryContext(iterID, versionIter)
 	payload, err := h.QueryResponseBuilder.BuildQueryResponse(txContext, versionIter, iterID, false, totalReturnLimit)
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.WithStack(err)
+	}
+
+	payloadBytes, err := proto.Marshal(payload)
+	if err != nil {
+		txContext.CleanupQueryContext(iterID)
+		return nil, errors.Wrap(err, "marshal failed")
+	}
+
+	chaincodeLogger.Debugf("Found version for key. Sending %s", pb.ChaincodeMessage_RESPONSE)
+	return &pb.ChaincodeMessage{Type: pb.ChaincodeMessage_RESPONSE, Payload: payloadBytes, Txid: msg.Txid, ChannelId: msg.ChannelId}, nil
+}
+
+func (h *Handler) HandleGetUpdatesByBlockRange(msg *pb.ChaincodeMessage, txContext *TransactionContext) (*pb.ChaincodeMessage, error) {
+	if txContext.HistoryQueryExecutor == nil {
+		return nil, errors.New("history database is not enabled")
+	}
+	iterID := h.UUIDGenerator.New()
+	namespaceID := txContext.NamespaceID
+
+	getUpdatesByBlockRange := &pb.GetUpdatesByBlockRange{}
+	err := proto.Unmarshal(msg.Payload, getUpdatesByBlockRange)
+	if err != nil {
+		return nil, errors.Wrap(err, "unmarshal failed")
+	}
+
+	blockRangeIter, err := txContext.HistoryQueryExecutor.GetUpdatesByBlockRange(namespaceID, getUpdatesByBlockRange.Start, getUpdatesByBlockRange.End, getUpdatesByBlockRange.Updates)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	totalReturnLimit := h.calculateTotalReturnLimit(nil)
+
+	txContext.InitializeQueryContext(iterID, blockRangeIter)
+	payload, err := h.QueryResponseBuilder.BuildQueryResponse(txContext, blockRangeIter, iterID, false, totalReturnLimit)
 	if err != nil {
 		txContext.CleanupQueryContext(iterID)
 		return nil, errors.WithStack(err)

@@ -296,6 +296,7 @@ type HistoryQueryExecutor interface {
 	GetHistoryForKey(namespace string, key string) (commonledger.ResultsIterator, error)
 	GetHistoryForKeys(namespace string, keys []string) (commonledger.ResultsIterator, error)
 	GetVersionsForKey(namespace string, key string, start uint64, end uint64) (commonledger.ResultsIterator, error)
+	GetUpdatesByBlockRange(namespace string, start uint64, end uint64, updates uint64) (commonledger.ResultsIterator, error)
 }
 
 // TxSimulator simulates a transaction on a consistent snapshot of the 'as recent state as possible'
