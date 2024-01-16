@@ -348,3 +348,156 @@ func (scanner *versionScanner) Next() (commonledger.QueryResult, error) {
 func (scanner *versionScanner) Close() {
 	scanner.dbItr.Release()
 }
+
+// ---------------------------------------------
+
+// GetUpdatesByBlockRange implements method in interface `ledger.HistoryQueryExecutor`
+func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, end uint64, updates uint64) (commonledger.ResultsIterator, error) {
+	if end < start {
+		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
+	}
+
+	if end <= 0 || start <= 0 {
+		return nil, errors.Errorf("Start: %d, end: %d cannot be less than 1", start, end)
+	}
+
+	// Create iterator over range from ns~startBlock to ns~endBlock
+	startKey := append([]byte(namespace), compositeKeySep...)
+	startKey = append(startKey, util.EncodeOrderPreservingVarUint64(start)...)
+
+	// End key is exclusive, end+1 results in range including all entries from 'start' to 'end'
+	endKey := append([]byte(namespace), compositeKeySep...)
+	endKey = append(endKey, util.EncodeOrderPreservingVarUint64(end+1)...)
+
+	dbItr, err := q.levelDB.GetIterator(startKey, endKey)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Debugf("Initialized block scanner over range from start: %d to end: %d seeking results with at least %d updates", start, end, updates)
+
+	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, "", nil, 0}
+
+	err = scanner.countKeyUpdates(updates)
+	if err != nil {
+		return nil, err
+	}
+
+	return scanner, nil
+}
+
+// blockRangeScanner implements ResultsIterator for iterating through history results
+type blockRangeScanner struct {
+	namespace    string
+	dbItr        iterator.Iterator
+	blockStore   *blkstorage.BlockStore
+	keys         []string
+	currentBlock uint64
+	currentKey   string
+	transactions []uint64
+	txIndex      int
+}
+
+func (scanner *blockRangeScanner) Next() (commonledger.QueryResult, error) {
+
+	if scanner.txIndex >= len(scanner.transactions) {
+		hasNext, key, err := scanner.nextKey()
+		if err != nil {
+			return nil, err
+		}
+		if !hasNext {
+			// Iterator exhausted
+			return nil, nil
+		}
+		scanner.currentKey = key
+	}
+
+	blockNum := scanner.currentBlock
+	tranNum := scanner.transactions[scanner.txIndex]
+	scanner.txIndex++
+
+	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
+		scanner.namespace, scanner.currentKey, blockNum, tranNum)
+
+	// Get the transaction from block storage that is associated with this history record
+	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the txid, key write value, timestamp, and delete indicator associated with this transaction
+	queryResult, err := getKeyModificationFromTran(tranEnvelope, scanner.namespace, scanner.currentKey)
+	if err != nil {
+		return nil, err
+	}
+	if queryResult == nil {
+		// should not happen, but make sure there is inconsistency between historydb and statedb
+		logger.Errorf("No namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.currentKey, blockNum, tranNum)
+		return nil, errors.Errorf("no namespace or key is found for namespace %s and key %s with decoded blockNum %d and tranNum %d", scanner.namespace, scanner.currentKey, blockNum, tranNum)
+	}
+	logger.Debugf("Found historic key value for namespace:%s key:%s from transaction %s",
+		scanner.namespace, scanner.currentKey, queryResult.(*queryresult.KeyModification).TxId)
+	return queryResult, nil
+}
+
+func (scanner *blockRangeScanner) Close() {
+	scanner.dbItr.Release()
+}
+
+func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
+	keyCounts := make(map[string]int)
+	for scanner.dbItr.Next() {
+		_, key, err := decodeDataKey(scanner.namespace, scanner.dbItr.Key())
+		if err != nil {
+			return err
+		}
+		_, _, transactions, err := decodeNewIndex(scanner.dbItr.Value())
+		if err != nil {
+			return err
+		}
+		keyCounts[key] += len(transactions)
+	}
+	for key, count := range keyCounts {
+		logger.Debugf("Key: %s updated %d times\n", key, count)
+		if count >= int(updates) {
+			scanner.keys = append(scanner.keys, key)
+		}
+	}
+	scanner.dbItr.First()
+	scanner.dbItr.Prev()
+	return nil
+}
+
+func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
+	for {
+		if !scanner.dbItr.Next() {
+			return false, "", nil
+		}
+		dataKey := scanner.dbItr.Key()
+		blockNum, key, err := decodeDataKey(scanner.namespace, dataKey)
+		if err != nil {
+			return false, "", err
+		}
+		scanner.currentBlock = blockNum
+		if contains(scanner.keys, key) {
+			indexVal := scanner.dbItr.Value()
+			_, _, transactions, err := decodeNewIndex(indexVal)
+			if err != nil {
+				return false, "", err
+			}
+			scanner.transactions = transactions
+			scanner.txIndex = 0
+			logger.Debugf("Next key: %s, appears in block %d transactions: %v\n", key, scanner.currentBlock, scanner.transactions)
+			return true, key, nil
+		}
+	}
+}
+
+func contains(keys []string, searchKey string) bool {
+	for _, key := range keys {
+		if key == searchKey {
+			return true
+		}
+	}
+	return false
+}
