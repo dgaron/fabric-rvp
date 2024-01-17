@@ -413,14 +413,15 @@ func (scanner *blockRangeScanner) Next() (commonledger.QueryResult, error) {
 	}
 	key := scanner.keys[scanner.keyIndex]
 
+	blockNum := scanner.blockNum
 	tranNum := scanner.transactions[scanner.txIndex]
 	scanner.txIndex++
 
 	logger.Debugf("Found history record for namespace:%s key:%s at blockNumTranNum %v:%v\n",
-		scanner.namespace, key, scanner.blockNum, tranNum)
+		scanner.namespace, key, blockNum, tranNum)
 
 	// Get the transaction from block storage that is associated with this history record
-	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(scanner.blockNum, tranNum)
+	tranEnvelope, err := scanner.blockStore.RetrieveTxByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
 		return nil, err
 	}
