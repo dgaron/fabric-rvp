@@ -466,7 +466,6 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 			}
 		}
 	}
-	logger.Debugf("%d keys found meeting the update threshold in block range", len(keyCounts))
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
 		if count >= int(updates) {
@@ -474,6 +473,7 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 		}
 	}
 	sort.Strings(scanner.keys)
+	logger.Debugf("%d keys found meeting the update threshold in block range", len(scanner.keys))
 	return nil
 }
 
@@ -512,7 +512,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, error) {
 
 func (scanner *blockRangeScanner) updateCurrentKeyData() (bool, error) {
 	logger.Debugf("Entering updateCurrentKeyData")
-	if !scanner.currentKeyItr.Next() {
+	if scanner.currentKeyItr != nil && !scanner.currentKeyItr.Next() {
 		return true, nil
 	}
 	indexVal := scanner.currentKeyItr.Value()
