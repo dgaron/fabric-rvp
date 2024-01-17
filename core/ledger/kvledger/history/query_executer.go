@@ -445,7 +445,9 @@ func (scanner *blockRangeScanner) Next() (commonledger.QueryResult, error) {
 }
 
 func (scanner *blockRangeScanner) Close() {
-	scanner.currentKeyItr.Release()
+	if scanner.currentKeyItr != nil {
+		scanner.currentKeyItr.Release()
+	}
 }
 
 func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
