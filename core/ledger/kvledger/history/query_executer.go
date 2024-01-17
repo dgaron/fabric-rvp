@@ -406,6 +406,7 @@ func (scanner *blockRangeScanner) Next() (commonledger.QueryResult, error) {
 				return nil, err
 			}
 			if !hasNext {
+				logger.Debugf("Query completed")
 				// All iterators exhausted
 				return nil, nil
 			}
@@ -474,6 +475,7 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 }
 
 func (scanner *blockRangeScanner) nextKey() (bool, error) {
+	logger.Debugf("Entering nextKey")
 	scanner.keyIndex++
 	if scanner.keyIndex >= len(scanner.keys) {
 		return false, nil
@@ -503,6 +505,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, error) {
 }
 
 func (scanner *blockRangeScanner) updateCurrentKeyData() (bool, error) {
+	logger.Debugf("Entering updateCurrentKeyData")
 	if !scanner.currentKeyItr.Next() {
 		return true, nil
 	}
