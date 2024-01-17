@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
+	"sort"
+
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
@@ -542,6 +544,7 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 			scanner.keys = append(scanner.keys, key)
 		}
 	}
+	sort.Strings(scanner.keys)
 	scanner.dbItr.First()
 	scanner.dbItr.Prev()
 	return nil
