@@ -512,7 +512,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, error) {
 
 func (scanner *blockRangeScanner) updateCurrentKeyData() (bool, error) {
 	logger.Debugf("Entering updateCurrentKeyData")
-	if scanner.currentKeyItr != nil && !scanner.currentKeyItr.Next() {
+	if scanner.currentKeyItr == nil || !scanner.currentKeyItr.Next() {
 		return true, nil
 	}
 	indexVal := scanner.currentKeyItr.Value()
