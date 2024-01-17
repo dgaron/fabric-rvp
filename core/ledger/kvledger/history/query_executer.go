@@ -467,11 +467,20 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 	logger.Debugf("%d keys found meeting the update threshold in block range", len(keyCounts))
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
-		if count >= int(updates) {
+		if count >= int(updates) && !contains(scanner.keys, key) {
 			scanner.keys = append(scanner.keys, key)
 		}
 	}
 	return nil
+}
+
+func contains(keys []string, searchKey string) bool {
+	for _, key := range keys {
+		if key == searchKey {
+			return true
+		}
+	}
+	return false
 }
 
 func (scanner *blockRangeScanner) nextKey() (bool, error) {
