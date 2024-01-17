@@ -476,7 +476,9 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 
 func (scanner *blockRangeScanner) nextKey() (bool, error) {
 	logger.Debugf("Entering nextKey")
-	scanner.currentKeyItr.Release()
+	if scanner.currentKeyItr != nil {
+		scanner.currentKeyItr.Release()
+	}
 	scanner.keyIndex++
 	if scanner.keyIndex >= len(scanner.keys) {
 		return false, nil
