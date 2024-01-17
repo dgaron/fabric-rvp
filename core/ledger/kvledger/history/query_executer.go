@@ -463,6 +463,7 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 			}
 		}
 	}
+	logger.Debugf("%d keys found meeting the update threshold in block range", len(keyCounts))
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
 		if count >= int(updates) {
@@ -554,8 +555,8 @@ func countKeyUpdatesForTran(tranEnvelope *common.Envelope, namespace string, key
 			for _, kvWrite := range nsRWSet.KvRwSet.Writes {
 				keys[kvWrite.Key] += 1
 			} // end keys loop
+			return nil
 		} // end if
-		return nil
 	} //end namespaces loop
 	logger.Debugf("namespace [%s] not found in transaction's ReadWriteSets", namespace)
 	return nil
