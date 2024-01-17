@@ -474,15 +474,6 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 	return nil
 }
 
-func contains(keys []string, searchKey string) bool {
-	for _, key := range keys {
-		if key == searchKey {
-			return true
-		}
-	}
-	return false
-}
-
 func (scanner *blockRangeScanner) nextKey() (bool, error) {
 	logger.Debugf("Entering nextKey")
 	if scanner.currentKeyItr != nil {
