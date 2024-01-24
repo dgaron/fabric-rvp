@@ -11,7 +11,6 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric/common/ledger/dataformat"
-	"github.com/hyperledger/fabric/common/ledger/util"
 	"github.com/hyperledger/fabric/common/ledger/util/leveldbhelper"
 	"github.com/hyperledger/fabric/core/ledger"
 	"github.com/hyperledger/fabric/core/ledger/internal/version"
@@ -84,7 +83,6 @@ func (d *DB) Commit(block *common.Block) error {
 	var tranNo uint64
 
 	dbBatch := d.levelDB.NewUpdateBatch()
-	dataKeys := make(map[string][]uint64)
 
 	logger.Debugf("Channel [%s]: Updating history database for blockNo [%v] with [%d] transactions",
 		d.name, blockNo, len(block.Data.Data))
@@ -133,42 +131,9 @@ func (d *DB) Commit(block *common.Block) error {
 				ns := nsRWSet.NameSpace
 
 				for _, kvWrite := range nsRWSet.KvRwSet.Writes {
-					var (
-						versions     uint64
-						transactions []uint64
-					)
-					// Get returns nil if key not found
-					GIkey := []byte("_" + kvWrite.Key)
-					versionsBytes, err := d.levelDB.Get(GIkey)
-					if err != nil {
-						return err
-					}
-					if versionsBytes != nil {
-						versions, _, err = util.DecodeOrderPreservingVarUint64(versionsBytes)
-						if err != nil {
-							return err
-						}
-						recordedTransactions, present := dataKeys[kvWrite.Key]
-						if present {
-							transactions = recordedTransactions
-						}
-					}
-					versions++
-					transactions = append(transactions, tranNo)
-
-					dataKeys[kvWrite.Key] = transactions
-
-					updatedVersionsBytes := util.EncodeOrderPreservingVarUint64(versions)
-					err = d.levelDB.Put(GIkey, updatedVersionsBytes, true)
-					if err != nil {
-						return err
-					}
-
-					minVersion := versions - uint64(len(transactions)) + 1
-					dataKey := constructDataKey(ns, kvWrite.Key, minVersion)
-					indexVal := constructNewIndex(blockNo, transactions)
-					logger.Debugf("Added to dbBatch: %s~%d: %d~%v\n", kvWrite.Key, minVersion, blockNo, transactions)
-					dbBatch.Put(dataKey, indexVal)
+					dataKey := constructDataKey(ns, kvWrite.Key, blockNo, tranNo)
+					// No value is required, write an empty byte array (emptyValue) since Put() of nil is not allowed
+					dbBatch.Put(dataKey, emptyValue)
 				}
 			}
 
