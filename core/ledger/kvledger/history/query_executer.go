@@ -507,6 +507,12 @@ func (scanner *blockRangeScanner) getNextBlockTran() (uint64, uint64, bool, erro
 		}
 	}
 	// Current key iterator exhausted
-	scanner.nextKey()
+	hasNextKey, err := scanner.nextKey()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if !hasNextKey {
+		return 0, 0, true, nil
+	}
 	return scanner.getNextBlockTran()
 }
