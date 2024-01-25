@@ -451,7 +451,19 @@ func (scanner *blockRangeScanner) Close() {
 
 func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 	keyCounts := make(map[string]int)
-	for i := scanner.start; i <= scanner.end; i++ {
+
+	bcInfo, err := scanner.blockStore.GetBlockchainInfo()
+	if err != nil {
+		return err
+	}
+	lastBlockNum := bcInfo.Height - 1
+
+	endBlock := scanner.end
+	if scanner.end > lastBlockNum {
+		endBlock = lastBlockNum
+	}
+
+	for i := scanner.start; i <= endBlock; i++ {
 		nextBlockBytes, err := scanner.blockStore.RetrieveBlockByNumber(i)
 		if err != nil {
 			return err
