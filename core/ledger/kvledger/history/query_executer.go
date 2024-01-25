@@ -495,6 +495,10 @@ func countKeyUpdatesForTran(tranEnvelope *common.Envelope, namespace string, key
 }
 
 func (scanner *blockRangeScanner) getNextBlockTran() (uint64, uint64, bool, error) {
+	if scanner.currentKeyItr == nil {
+		// Indicates no keys meet criteria
+		return 0, 0, true, nil
+	}
 	hasNextIndex := scanner.currentKeyItr.Next()
 	if hasNextIndex {
 		historyKey := scanner.currentKeyItr.Key()
