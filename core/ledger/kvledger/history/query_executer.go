@@ -319,7 +319,7 @@ func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, e
 		return nil, errors.Errorf("Start: %d, end: %d cannot be less than 1", start, end)
 	}
 
-	scanner := &blockRangeScanner{namespace, q.levelDB, nil, q.blockStore, start, end, nil, -1, nil, nil}
+	scanner := &blockRangeScanner{namespace, q.levelDB, q.blockStore, start, end, nil, -1, nil, nil}
 
 	err := scanner.countKeyUpdates(updates)
 	if err != nil {
@@ -340,7 +340,6 @@ func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, e
 type blockRangeScanner struct {
 	namespace        string
 	levelDB          *leveldbhelper.DBHandle
-	dbItr            iterator.Iterator
 	blockStore       *blkstorage.BlockStore
 	start            uint64
 	end              uint64
@@ -438,7 +437,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, error) {
 		return false, err
 	}
 	for scanner.currentKeyItr.Next() {
-		historyKey := scanner.dbItr.Key()
+		historyKey := scanner.currentKeyItr.Key()
 		blockNum, _, err := scanner.currentRangeScan.decodeBlockNumTranNum(historyKey)
 		if err != nil {
 			return false, err
