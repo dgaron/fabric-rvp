@@ -455,7 +455,7 @@ func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, e
 
 	logger.Debugf("Initialized block scanner over range from start: %d to end: %d seeking results with at least %d updates", start, end, updates)
 
-	keys := make(map[string]int)
+	keys := make(map[string]bool)
 	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, keys, start, "", nil, 0}
 
 	err = scanner.countKeyUpdates(updates)
@@ -471,7 +471,7 @@ type blockRangeScanner struct {
 	namespace    string
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
-	keys         map[string]int
+	keys         map[string]bool
 	currentBlock uint64
 	currentKey   string
 	transactions []uint64
@@ -540,7 +540,7 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
 		if count >= int(updates) {
-			scanner.keys[key] = 1
+			scanner.keys[key] = true
 		}
 	}
 	scanner.dbItr.First()
@@ -559,7 +559,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
 			return false, "", err
 		}
 		scanner.currentBlock = blockNum
-		if scanner.keys[key] == 1 {
+		if scanner.keys[key] {
 			indexVal := scanner.dbItr.Value()
 			_, _, transactions, err := decodeNewIndex(indexVal)
 			if err != nil {
