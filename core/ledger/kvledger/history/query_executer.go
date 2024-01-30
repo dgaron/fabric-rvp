@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package history
 
 import (
-	"sort"
-
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	commonledger "github.com/hyperledger/fabric/common/ledger"
@@ -457,7 +455,8 @@ func (q *QueryExecutor) GetUpdatesByBlockRange(namespace string, start uint64, e
 
 	logger.Debugf("Initialized block scanner over range from start: %d to end: %d seeking results with at least %d updates", start, end, updates)
 
-	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, nil, start, "", nil, 0}
+	keys := make(map[string]int)
+	scanner := &blockRangeScanner{namespace, dbItr, q.blockStore, keys, start, "", nil, 0}
 
 	err = scanner.countKeyUpdates(updates)
 	if err != nil {
@@ -472,7 +471,7 @@ type blockRangeScanner struct {
 	namespace    string
 	dbItr        iterator.Iterator
 	blockStore   *blkstorage.BlockStore
-	keys         []string
+	keys         map[string]int
 	currentBlock uint64
 	currentKey   string
 	transactions []uint64
@@ -541,10 +540,9 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 	for key, count := range keyCounts {
 		logger.Debugf("Key: %s updated %d times\n", key, count)
 		if count >= int(updates) {
-			scanner.keys = append(scanner.keys, key)
+			scanner.keys[key] = 1
 		}
 	}
-	sort.Strings(scanner.keys)
 	scanner.dbItr.First()
 	scanner.dbItr.Prev()
 	return nil
@@ -561,7 +559,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
 			return false, "", err
 		}
 		scanner.currentBlock = blockNum
-		if contains(scanner.keys, key) {
+		if scanner.keys[key] == 1 {
 			indexVal := scanner.dbItr.Value()
 			_, _, transactions, err := decodeNewIndex(indexVal)
 			if err != nil {
@@ -573,13 +571,4 @@ func (scanner *blockRangeScanner) nextKey() (bool, string, error) {
 			return true, key, nil
 		}
 	}
-}
-
-func contains(keys []string, searchKey string) bool {
-	for _, key := range keys {
-		if key == searchKey {
-			return true
-		}
-	}
-	return false
 }
