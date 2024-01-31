@@ -536,10 +536,7 @@ func (scanner *blockRangeScanner) countKeyUpdates(updates uint64) error {
 			return err
 		}
 		keyCounts[key] += len(transactions)
-	}
-	for key, count := range keyCounts {
-		logger.Debugf("Key: %s updated %d times\n", key, count)
-		if count >= int(updates) {
+		if keyCounts[key] >= int(updates) {
 			scanner.keys[key] = true
 		}
 	}
