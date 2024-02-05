@@ -238,6 +238,10 @@ func (q *QueryExecutor) GetVersionsForKey(namespace string, key string, start ui
 		return nil, errors.Errorf("Start: %d is not less than or equal to end: %d", start, end)
 	}
 
+	if end <= 0 || start <= 0 {
+		return nil, errors.Errorf("Start: %d, end: %d cannot be less than 1", start, end)
+	}
+
 	GIkey := []byte("_" + key)
 	versionsBytes, err := q.levelDB.Get(GIkey)
 	if err != nil {
