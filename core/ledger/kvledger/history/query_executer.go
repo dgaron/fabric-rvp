@@ -524,7 +524,7 @@ func (scanner *blockRangeScanner) nextKey() (bool, error) {
 		}
 	}
 	// Shouldn't ever reach this line as we precheck that all keys are within block range
-	return scanner.nextKey()
+	return false, nil
 }
 
 func (scanner *blockRangeScanner) updateCurrentKeyData() (bool, error) {
